@@ -1150,6 +1150,8 @@ void nav_read_in_all_cached_data(void) {
 * of the previous frame, indicating if the following subframe is flipped)
 ******************************************************************************/
 static int nav_test_telemetry(struct Space_vehicle *sv) {
+    /* TOD - mask should be 0x7FC00000A, and the first test should be against 0x5D000000 */
+    
     unsigned int temp = sv->navdata.new_word & 0x3FC00000;
 
     /* Test the first 8 bits for for the preamble, bur also check the 
@@ -1161,7 +1163,9 @@ static int nav_test_telemetry(struct Space_vehicle *sv) {
     return 0;
 }
     
-
+/************************************************************
+* Does new_word hold a valid NAV subframe? 
+***********************************************************/
 static int nav_valid_subframes(struct Space_vehicle *sv) {
     if(!nav_test_parity(sv->navdata.new_word)) {
 #if SHOW_NAV_FRAMING
@@ -1213,7 +1217,9 @@ static int nav_valid_subframes(struct Space_vehicle *sv) {
     }
     return 1;
 }
-
+/************************************************************************
+* Receive a new bit of NAV data
+************************************************************************/
 static void nav_new_bit(struct Space_vehicle *sv, uint_8 s) {
     /* Shift in the next bit */
     sv->navdata.new_word <<= 1;
@@ -1230,6 +1236,10 @@ static void nav_new_bit(struct Space_vehicle *sv, uint_8 s) {
     sv->navdata.seq++;
 }
 
+/*************************************************************************
+* Restart the reception of NAV data. This happens if we have an
+* unexpected BPSK phase flip
+*************************************************************************/
 static void nav_abandon(struct Space_vehicle *sv) {
     printf("%2i: Abandon - %5i errors\n", sv->id, sv->navdata.bit_errors);
     sv->navdata.valid_bits = 0;
@@ -1240,6 +1250,9 @@ static void nav_abandon(struct Space_vehicle *sv) {
     sv->navdata.bit_errors++;
 }
 
+/*************************************************************************
+* We have a new MS of signal. Work towards decoding a bit of BPSH data
+*************************************************************************/
 static void nav_process(struct Space_vehicle *sv, uint_8 s) {
     if(sv->navdata.part_in_bit == BIT_LENGTH-1) {
         if(sv->navdata.bit_errors>0)
@@ -1267,6 +1280,7 @@ static int print_bitmap(uint_32 *a, int i) {
   printf("\n");
 }
 #endif
+
 /*********************************************************************
 * Count how many bits are set in 'i' bits
 *********************************************************************/
@@ -1412,6 +1426,7 @@ static void start_locked(struct Space_vehicle *sv, int offset_from_peak) {
     sv->bits_file = NULL;
 #endif
 }
+
 /*********************************************************************
 * Start tracking - flip from acquire to tracking
 *********************************************************************/
@@ -1540,7 +1555,7 @@ void track(struct Space_vehicle *sv) {
 }
 
 /*********************************************************************
-* acquire
+* acquire - attempt to see if a SV has transmitting with this phase
 *********************************************************************/
 static void acquire(struct Space_vehicle *sv) {
    int band;
@@ -1615,7 +1630,8 @@ static void bitmap_set_bit(uint_32 *bitmap, int o, int s) {
 }
 
 /*********************************************************************
-*
+* Fine-tune the the code phase tracking, by looking at the relative
+* powers of the early and late signal
 *********************************************************************/
 static void adjust_early_late(struct Space_vehicle *sv) {
     int adjust =  sv->lock.code_nco_trend;
@@ -1721,7 +1737,8 @@ static void update_early_late(struct Space_vehicle *sv, int sample) {
 
 
 /*********************************************************************
-*
+* Track the phase of the carrier using the vector of the prompt 
+* signal to tune the NCO
 *********************************************************************/
 static void adjust_prompt(struct Space_vehicle *sv) {
     int s = sv->lock.prompt_sine_power;
@@ -1851,7 +1868,7 @@ static void update_prompt(struct Space_vehicle *sv, int sample) {
 }
 
 /*********************************************************************
-*
+* Update all the NCOs for this Space Vehicle
 *********************************************************************/
 static void update_ncos(struct Space_vehicle *sv) {    
     /***************************
@@ -1867,6 +1884,11 @@ static void update_ncos(struct Space_vehicle *sv) {
         sv->lock.code_nco -= CHIPS_PER_MS<<22;
 }
 
+/*********************************************************************
+* Take a snapshot of all the importing timing information, either for 
+* generating a position, or for printing to the screen. This can also
+* be written to a file for later analysis
+*********************************************************************/
 static void snapshot_timing(struct Snapshot *s) {
     int i;
     static int heading = 0;
@@ -2331,6 +2353,7 @@ void generate_atan2_table(void) {
     }
 #endif    
 }
+
 /*********************************************************************
 * Usage message
 *********************************************************************/
@@ -2440,3 +2463,6 @@ int main(int argc, char *argv[]) {
   printf("%lli samples processed\n",sample_count);
   return 0;
 }
+/*********************************************************************
+* END OF FILE
+*********************************************************************/
