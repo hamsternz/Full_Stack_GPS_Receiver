@@ -64,13 +64,13 @@ SOFTWARE.
 /*******************************************************************
 * Factors that control the feedback loops for tracking the signals
 *******************************************************************/
-/* The factor used to smooth eh early and late power levels */
+/* The factor used to smooth the early and late power levels */
 #define LATE_EARLY_IIR_FACTOR       16
 
 /* Filter constants for the angle and change in angle 
 * used for carrier locking */
-#define LOCK_DELTA_IIR_FACTOR       8
-#define LOCK_ANGLE_IIR_FACTOR       8
+#define LOCK_DELTA_IIR_FACTOR       16
+#define LOCK_ANGLE_IIR_FACTOR       16
 
 /*******************************************************************
 * To print out debugging information
@@ -129,7 +129,8 @@ SOFTWARE.
 #define SHOW_TIMING_SNAPSHOT_DETAILS      1
 
 /* Do we want to write the snapshots to a file, for later analysis? */
-#define SHOW_TIMING_SNAPSHOT_TO_FILE      1
+#define LOG_TIMING_SNAPSHOT_TO_FILE      1
+#define LOG_POSITION_FIX_TO_FILE         1
 
 /*************************************************************/
 /******************** END OF DEFINES *************************/
@@ -147,7 +148,7 @@ uint_32 if_cycles_per_ms;
 uint_32 samples_for_acquire;
 uint_32 acquire_bitmap_size_u32;
 uint_32 code_offset_in_ms;
-uint_32 ms_for_acquire = 4;
+uint_32 ms_for_acquire = 6;
 uint_32 acquire_min_power;
 uint_32 track_unlock_power;
 uint_32 lock_lost_power;
@@ -156,6 +157,7 @@ uint_64 sample_count = 0;
 enum e_state {state_acquiring, state_tracking, state_locked};
 
 FILE *snapshot_file;
+FILE *position_file;
 /***************************************************************************
 * Physical constants and others defined in the GPS specifications
 ***************************************************************************/
@@ -845,6 +847,12 @@ static void attempt_solution(struct Snapshot *s) {
 #endif        
     LatLonAlt(predicted_location.x, predicted_location.y, predicted_location.z, &lat, &lon, &alt);
     printf("Lat/Lon/Alt : %20.6f, %20.6f, %20.1f\n", lat*180/PI, lon*180/PI, alt);
+
+    if(position_file != NULL) {
+        fprintf(position_file,"%16.5f, %16.5f, %16.5f, %15.8f,  %20.6f, %20.6f, %20.1f\n", 
+                              predicted_location.x, predicted_location.y, predicted_location.z, predicted_location.time,
+                              lat*180/PI, lon*180/PI, alt);
+    }
 
     free(sv_location);
     return;
@@ -2424,15 +2432,29 @@ int main(int argc, char *argv[]) {
     printf("Unable to open file '%s'\n",filename);
   }
 
-#if SHOW_TIMING_SNAPSHOT_TO_FILE
-  char snapshot_filename[40];
-  sprintf(snapshot_filename,"snapshots_%u.dat",(unsigned)time(NULL));
-  snapshot_file = fopen(snapshot_filename, "wb");
-  if(snapshot_file == NULL) {
+#if LOG_TIMING_SNAPSHOT_TO_FILE
+  {
+    char snapshot_filename[40];
+    sprintf(snapshot_filename,"snapshots_%u.dat",(unsigned)time(NULL));
+    snapshot_file = fopen(snapshot_filename, "wb");
+    if(snapshot_file == NULL) {
         snapshot_file = fopen(snapshot_filename, "w+b");
-  }
-  if(snapshot_file == NULL) {
+    }
+    if(snapshot_file == NULL) {
         printf("Unable to open file '%s'\n",snapshot_filename);
+    }
+  }
+#endif
+
+#if LOG_POSITION_FIX_TO_FILE
+  char position_filename[40];
+  sprintf(position_filename,"position_%u.dat",(unsigned)time(NULL));
+  position_file = fopen(position_filename, "wb");
+  if(position_file == NULL) {
+        position_file = fopen(position_filename, "w+b");
+  }
+  if(position_file == NULL) {
+        printf("Unable to open file '%s'\n",position_filename);
   }
 #endif
   /***********************************
@@ -2458,7 +2480,10 @@ int main(int argc, char *argv[]) {
     }
     c = getc(f);
   }
-  fclose(snapshot_file);
+  if(snapshot_file)
+    fclose(snapshot_file);
+  if(position_file)
+    fclose(position_file);
   fclose(f);
   printf("%lli samples processed\n",sample_count);
   return 0;
