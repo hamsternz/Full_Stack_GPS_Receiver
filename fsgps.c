@@ -65,12 +65,12 @@ SOFTWARE.
 * Factors that control the feedback loops for tracking the signals
 *******************************************************************/
 /* The factor used to smooth the early and late power levels */
-#define LATE_EARLY_IIR_FACTOR       16
+#define LATE_EARLY_IIR_FACTOR      64
 
 /* Filter constants for the angle and change in angle 
 * used for carrier locking */
-#define LOCK_DELTA_IIR_FACTOR       16
-#define LOCK_ANGLE_IIR_FACTOR       16
+#define LOCK_DELTA_IIR_FACTOR       4
+#define LOCK_ANGLE_IIR_FACTOR       4
 
 /*******************************************************************
 * To print out debugging information
@@ -112,10 +112,10 @@ SOFTWARE.
 #define LOCK_SHOW_PER_BIT           0
 
 /* Show the state of the late/early filters */
-#define LOCK_SHOW_EARY_LATE_TREND   0
+#define LOCK_SHOW_EARLY_LATE_TREND  0
 
 /* Show the I+Q power levels each millisecond */
-#define LOCK_SHOW_PER_MS_IQ            0
+#define LOCK_SHOW_PER_MS_IQ         0
 
 /* Show the I+Q vector each millisecond */
 #define LOCK_SHOW_ANGLES            0
@@ -123,7 +123,7 @@ SOFTWARE.
 /* Show each BSPK Bit is it is received */
 #define LOCK_SHOW_BITS              0
 #define LOCK_SHOW_BPSK_PHASE_PER_MS 0
-#define SHOW_NAV_FRAMING            1
+#define SHOW_NAV_FRAMING            0
 
 /* Do we want to print out each timing snapshot */
 #define SHOW_TIMING_SNAPSHOT_DETAILS      1
@@ -132,6 +132,8 @@ SOFTWARE.
 #define LOG_TIMING_SNAPSHOT_TO_FILE      1
 #define LOG_POSITION_FIX_TO_FILE         1
 
+/* Add extra checks to make sure nothing is awry */
+#define DOUBLECHECK_PROMPT_CODE_INDEX    0
 /*************************************************************/
 /******************** END OF DEFINES *************************/
 /*************************************************************/
@@ -148,7 +150,7 @@ uint_32 if_cycles_per_ms;
 uint_32 samples_for_acquire;
 uint_32 acquire_bitmap_size_u32;
 uint_32 code_offset_in_ms;
-uint_32 ms_for_acquire = 6;
+uint_32 ms_for_acquire = 2;
 uint_32 acquire_min_power;
 uint_32 track_unlock_power;
 uint_32 lock_lost_power;
@@ -242,18 +244,30 @@ struct Lock {
   uint_32 code_nco_filter;
   uint_32 code_nco;
   int_32  code_nco_trend;
-    
-  int_32 early_sine_total;
-  int_32 early_cosine_total;
-  int_32 prompt_sine_total;
-  int_32 prompt_cosine_total;
-  int_32 late_sine_total;
-  int_32 late_cosine_total;
+  
+  int_32  early_sine;
+  int_32  early_cosine;
+  uint_32 early_sine_count;  
+  uint_32 early_cosine_count;  
+  uint_32 early_sine_count_last;  
+  uint_32 early_cosine_count_last;  
+
+  int_32  prompt_sine;
+  int_32  prompt_cosine;
+  uint_32 prompt_sine_count;  
+  uint_32 prompt_cosine_count;  
+  uint_32 prompt_sine_count_last;  
+  uint_32 prompt_cosine_count_last;  
+
+  int_32  late_sine;
+  int_32  late_cosine;
+  uint_32 late_sine_count;  
+  uint_32 late_cosine_count;  
+  uint_32 late_sine_count_last;  
+  uint_32 late_cosine_count_last;  
   
   int_32 early_power;
   int_32 early_power_not_reset;
-  int_32 prompt_sine_power;
-  int_32 prompt_cosine_power;
   int_32 prompt_power;
   int_32 late_power;
   int_32 late_power_not_reset;
@@ -318,22 +332,6 @@ struct Space_vehicle {
   FILE *bits_file; 
   FILE *nav_file;
 } space_vehicles[] = {
-
-#if 0
-#if 1
-  { 1,  2, 6}, // Locks, Band 13, +1,069,307
-  {21,  5, 8}, // LOCKS, Band 14, +1,603,037 
-  {29,  1, 6}, // LOCKS, Band 6   -1,709,000  ,
-  {30,  2, 7}, // LOCKS, Band 6   -1,698,000
-  {31,  3, 8}  // LOCKS, Band 6,  -1,520,000
-//  {10,  2, 3}, 
-//  {14,  7, 8},   // Almost at 0 hz offset
-//  {31,  3, 8},
-//  {32,  4, 9}
-#else
-  {31,  3, 8},
-#endif
-#else
   { 1,  2, 6},
   { 2,  3, 7},
   { 3,  4, 8},
@@ -366,7 +364,6 @@ struct Space_vehicle {
   {30,  2, 7},
   {31,  3, 8},
   {32,  4, 9}
-#endif
 };
 
 #define N_SV (sizeof(space_vehicles)/sizeof(struct Space_vehicle))
@@ -665,16 +662,18 @@ static void sv_calc_corrected_time(int i) {
 
 }
 
-/*************************************************************************/
+/**************************************************************************
+* Calculate where the Space Vehicle will be at time "pos_t"
+**************************************************************************/
 static int orbit_calc_position(struct Space_vehicle *sv, struct Location *l)
 {
-  double time_from_ephemeris, semi_major_axis, ek, true_anomaly;
-  double argument_of_latitude;
-  double argument_of_latitude_correction,    corrected_argument_of_latitude;
-  double radius_correction,                  corrected_radius;
-  double correction_of_inclination,          corrected_inclination;
-  double pos_in_orbial_plane_x,              pos_in_orbial_plane_y;
-  double corrected_angle_of_ascending_node;
+  double time_from_ephemeris,   semi_major_axis;
+  double ek, true_anomaly,      corrected_argument_of_latitude;
+  double argument_of_latitude,  argument_of_latitude_correction;
+  double radius_correction,     corrected_radius;
+  double correction_of_inclination;
+  double pos_in_orbial_plane_x, pos_in_orbial_plane_y;
+  double corrected_inclination, corrected_angle_of_ascending_node;
   
   /***********************
   * Calculate orbit
@@ -730,13 +729,10 @@ static int orbit_calc_position(struct Space_vehicle *sv, struct Location *l)
 /*************************************************************************/
 static int sv_calc_location(int id, struct Location *l)
 {  
- 
     l->time = space_vehicles[id].pos_t;
     orbit_calc_position(space_vehicles+id, l);
     return 1;
 }
-
-
 /****************************************************************************/
 static void attempt_solution(struct Snapshot *s) {
     int sv_count = 0;
@@ -843,7 +839,9 @@ static void attempt_solution(struct Snapshot *s) {
 #if 1
     printf("\nSolved is  (%20f, %20f, %20f) @ %20f (alt %20f)\n", 
         predicted_location.x, predicted_location.y, predicted_location.z, predicted_location.time,
-        sqrt(predicted_location.x*predicted_location.x+predicted_location.y*predicted_location.y+predicted_location.z*predicted_location.z));
+        sqrt(predicted_location.x*predicted_location.x
+           + predicted_location.y*predicted_location.y
+           + predicted_location.z*predicted_location.z));
 #endif        
     LatLonAlt(predicted_location.x, predicted_location.y, predicted_location.z, &lat, &lon, &alt);
     printf("Lat/Lon/Alt : %20.6f, %20.6f, %20.1f\n", lat*180/PI, lon*180/PI, alt);
@@ -971,6 +969,7 @@ void debug_print_time(struct Space_vehicle *sv) {
   strftime(buf, sizeof(buf), "%a %Y-%m-%d %H:%M:%S %Z", &ts);
   printf("Epoch is %u (%s)\n", (unsigned)timestamp, buf);
 }
+
 /******************************************************************************
 * This is called everytime we have a frame of 300 bits, that passes validation
 ******************************************************************************/
@@ -1046,7 +1045,7 @@ static void nav_save_frame(struct Space_vehicle *sv) {
          sv->navdata.subframes[1][i] = unflipped[i];
   
       sv->nav_time.week_no              = join_bits_u(0,           0, 0, sv->navdata.subframes[1][2], 20,10);
-      /* Week 524+1023 is sometime in late 2010. This will work for about 20 years after that */
+      /* Week 524+1024 is sometime in late 2010. This will work for about 20 years after that */
       if(sv->nav_time.week_no < 524) {
         sv->nav_time.week_no += 1024*2;
       } else {
@@ -1125,9 +1124,13 @@ static void nav_save_frame(struct Space_vehicle *sv) {
   }
 }
 
+/******************************************************************************
+* Read in any cached NAV data for one Space Vehicles. This will allow results 
+* quicker as we don't have to wait for all the orbit info to be received
+******************************************************************************/
 static int nav_read_in_cached_data(struct Space_vehicle *sv) {
     FILE *f;
-    char name[100];
+    char name[22];
 
     sprintf(name, "NAV_%02i.dat",sv->id);
     f = fopen(name,"r+");
@@ -1141,11 +1144,16 @@ static int nav_read_in_cached_data(struct Space_vehicle *sv) {
         nav_save_frame(sv);
     }
     fclose(f);
+    /* Reset the time_good flag, as the frame_of_week will be wrong */
     sv->nav_time.time_good = 0;
     return 1;
 }
 
-void nav_read_in_all_cached_data(void) {
+/******************************************************************************
+* Read in any cached NAV data for all Space Vehicles. This will allow results
+* quicker as we don't have to wait for all the orbit info to be received
+******************************************************************************/
+static void nav_read_in_all_cached_data(void) {
     int i;
     for(i = 0; i < N_SV; i++) {
         nav_read_in_cached_data(space_vehicles+i);
@@ -1346,7 +1354,6 @@ static void start_locked(struct Space_vehicle *sv, int offset_from_peak) {
     int lower_delta=0, upper_delta=0;
     int start_freq, fine_adjustment;
     long long step;
-    int s,c;
 
     start_freq = (int)band_bandwidth * ((int)sv->track.band-(search_bands/2));
     lower_delta = (sv->track.power[1][1] - sv->track.power[1][0])/1024;
@@ -1384,7 +1391,9 @@ static void start_locked(struct Space_vehicle *sv, int offset_from_peak) {
     sv->lock.code_nco_filter      = 0;
     sv->lock.code_nco = offset_from_peak * sv->lock.code_nco_step;
     sv->lock.code_nco_trend = start_freq*272/100;
-
+#if 0
+    int s,c;
+    /*** This doesn't work *****/
     /* Set up the last angle, preventing any initial angle from
        upsetting the ability lock */
     s = sv->lock.prompt_sine_total;
@@ -1395,14 +1404,17 @@ static void start_locked(struct Space_vehicle *sv, int offset_from_peak) {
     }
     s &= ATAN2_SIZE-1;  c &= ATAN2_SIZE-1;
     sv->lock.last_angle = atan2_lookup[c][s];
+#endif
+    sv->lock.last_angle = 0;
 
     /* Reset the running totals */
-    sv->lock.early_sine_total      = -(int)(samples_per_ms-offset_from_peak)/4;
-    sv->lock.early_cosine_total    = -(int)(samples_per_ms-offset_from_peak)/4;
-    sv->lock.prompt_sine_total     = -(int)(samples_per_ms-offset_from_peak)/4;
-    sv->lock.prompt_cosine_total   = -(int)(samples_per_ms-offset_from_peak)/4;
-    sv->lock.late_sine_total       = -2; //(int)(samples_per_ms-offset_from_peak)/4;
-    sv->lock.late_cosine_total     = -2; //(int)(samples_per_ms-offset_from_peak)/4;
+    sv->lock.early_sine_count_last    = sv->lock.early_sine_count; 
+    sv->lock.early_cosine_count_last  = sv->lock.early_cosine_count;
+    sv->lock.prompt_sine_count_last   = sv->lock.prompt_sine_count; 
+    sv->lock.prompt_cosine_count_last = sv->lock.prompt_cosine_count;
+    sv->lock.late_sine_count_last     = sv->lock.late_sine_count; 
+    sv->lock.late_cosine_count_last   = sv->lock.late_cosine_count;
+
     sv->lock.early_power           = 0;
     sv->lock.early_power_not_reset = 0;
     sv->lock.prompt_power          = 2 * lock_lost_power;
@@ -1642,9 +1654,11 @@ static void bitmap_set_bit(uint_32 *bitmap, int o, int s) {
 * powers of the early and late signal
 *********************************************************************/
 static void adjust_early_late(struct Space_vehicle *sv) {
-    int adjust =  sv->lock.code_nco_trend;
+    int adjust;
     /* Use the relative power levels of the late and early codes 
      * to adjust the code NCO phasing */
+    adjust =  sv->lock.code_nco_trend;
+
     if(sv->lock.early_power/5 > sv->lock.late_power/4) {
         sv->lock.late_power = (sv->lock.early_power*3+sv->lock.late_power)/4;
         adjust += samples_per_ms*2;
@@ -1664,8 +1678,8 @@ static void adjust_early_late(struct Space_vehicle *sv) {
     if(sv->lock.code_nco+adjust >= 1023<<22) 
         sv->lock.code_nco -= 1023<<22;
         
-#if LOCK_SHOW_EARY_LATE_TREND
-    printf("%2i, %6i, %6i, %6i, %5i\n", sv->id,
+#if LOCK_SHOW_EARLY_LATE_TREND
+    printf("%2i: %6i, %6i, %6i, %5i\n", sv->id,
     sv->lock.early_power_not_reset/LATE_EARLY_IIR_FACTOR,
     sv->lock.prompt_power,
     sv->lock.late_power_not_reset/LATE_EARLY_IIR_FACTOR,
@@ -1674,16 +1688,15 @@ static void adjust_early_late(struct Space_vehicle *sv) {
 }
 
 /*********************************************************************
-* Update the state of a locked channel with the new sample.
-*********************************************************************/
-static void update_early_late(struct Space_vehicle *sv, int sample) {
+* Accumulate!
+********************************************************************/
+static void accumulate(struct Space_vehicle *sv, int sample) {
     int early_code_index,  late_code_index;
     uint_8 sine_positive, cosine_positive;
-    int prompt_code_index, prompt_code_index_next_cycle;
-    
+    int prompt_code_index;
+
     prompt_code_index            = sv->lock.code_nco>>22;
-    prompt_code_index_next_cycle = (sv->lock.code_nco + sv->lock.code_nco_step)>>22;
-    
+
     early_code_index  = (prompt_code_index == CHIPS_PER_MS-1) ? 0: prompt_code_index+1;
     late_code_index   = (prompt_code_index == 0) ? CHIPS_PER_MS-1: prompt_code_index-1;
 
@@ -1692,74 +1705,124 @@ static void update_early_late(struct Space_vehicle *sv, int sample) {
     ***********************************************************/
     sine_positive   = (sv->lock.phase_nco_sine   & 0x80000000) ? 0 : 1;
     cosine_positive = (sv->lock.phase_nco_cosine & 0x80000000) ? 0 : 1;
-    
+
     if(sv->gold_code[early_code_index] ^ sample) {
-        if(sine_positive)   sv->lock.early_sine_total++;
-        if(cosine_positive) sv->lock.early_cosine_total++;
+        sv->lock.early_sine_count    += sine_positive;
+        sv->lock.early_cosine_count  += cosine_positive;
+    }
+
+    if(sv->gold_code[prompt_code_index] ^ sample) {
+        sv->lock.prompt_sine_count   += sine_positive;
+        sv->lock.prompt_cosine_count += cosine_positive;
     }
 
     if(sv->gold_code[late_code_index] ^ sample) {
-        if(sine_positive)   sv->lock.late_sine_total++;
-        if(cosine_positive) sv->lock.late_cosine_total++;
-    }
-
-    if(prompt_code_index == prompt_code_index_next_cycle)
-        return;
-
-            
-    /***********************************************************
-    * Is this the last data bit for this repeat of the prompt C/A code?
-    ***********************************************************/
-    if(early_code_index == CHIPS_PER_MS-1) {
-        sv->lock.early_power -= sv->lock.early_power/LATE_EARLY_IIR_FACTOR;
-        sv->lock.early_power += sv->lock.early_sine_total   * sv->lock.early_sine_total
-                              + sv->lock.early_cosine_total * sv->lock.early_cosine_total;
-                             
-        sv->lock.early_power_not_reset -= sv->lock.early_power_not_reset/LATE_EARLY_IIR_FACTOR;
-        sv->lock.early_power_not_reset += sv->lock.early_sine_total   * sv->lock.early_sine_total
-                                + sv->lock.early_cosine_total * sv->lock.early_cosine_total;
-        sv->lock.early_sine_total   = 0 - samples_per_ms/4;
-        sv->lock.early_cosine_total = 0 - samples_per_ms/4;
-    } else     if(late_code_index == CHIPS_PER_MS-1) {
-        sv->lock.late_power -= sv->lock.late_power/LATE_EARLY_IIR_FACTOR;
-        
-        sv->lock.late_power += sv->lock.late_sine_total   * sv->lock.late_sine_total
-                             + sv->lock.late_cosine_total * sv->lock.late_cosine_total;
-                            
-        sv->lock.late_power_not_reset -= sv->lock.late_power_not_reset/LATE_EARLY_IIR_FACTOR;        
-        sv->lock.late_power_not_reset += sv->lock.late_sine_total   * sv->lock.late_sine_total
-                                       + sv->lock.late_cosine_total * sv->lock.late_cosine_total;
-                            
-        sv->lock.late_sine_total    = 0 - samples_per_ms/4;
-        sv->lock.late_cosine_total  = 0 - samples_per_ms/4;
-#if LOCK_SHOW_PER_MS_POWER
-        printf("%2i, %6i, %6i, %6i\n", sv->id,
-        sv->lock_early_power_not_reset/LATE_EARLY_IIR_FACTOR,
-        sv->lock_prompt_power,
-        sv->lock_late_power_not_reset/LATE_EARLY_IIR_FACTOR);
-#endif
-    } else     if(prompt_code_index == 1) {
-        adjust_early_late(sv);
+        sv->lock.late_sine_count     += sine_positive;
+        sv->lock.late_cosine_count   += cosine_positive;
     }
 }
 
+/*********************************************************************
+* Update the "code received early" power levels
+*********************************************************************/
+static void update_early(struct Space_vehicle *sv, int prompt_code_index, int prompt_code_index_next_cycle) {
+
+#if DOUBLECHECK_PROMPT_CODE_INDEX
+    int early_code_index;
+    early_code_index  = (prompt_code_index == CHIPS_PER_MS-1) ? 0: prompt_code_index+1;
+
+    /* This should never be true, but just in case... */
+    if(prompt_code_index == prompt_code_index_next_cycle) {
+        printf("Bad prompt_code_index in update_early()\n");
+        return;
+    }
+    
+
+    /***********************************************************
+    * Ensure that this is the last data bitt for this repeat of 
+    * the prompt C/A code?
+    ***********************************************************/
+    if(early_code_index != CHIPS_PER_MS-1) {
+       printf("Bad prompt_code_index in update_early()\n");
+       return;
+    }
+#endif
+
+    /* Work out the changes over the last repeat of the Gold code */
+    sv->lock.early_sine   = sv->lock.early_sine_count   - sv->lock.early_sine_count_last   - samples_per_ms/4;
+    sv->lock.early_cosine = sv->lock.early_cosine_count - sv->lock.early_cosine_count_last - samples_per_ms/4;
+    sv->lock.early_sine_count_last   = sv->lock.early_sine_count;
+    sv->lock.early_cosine_count_last = sv->lock.early_cosine_count;
+
+    sv->lock.early_power -= sv->lock.early_power/LATE_EARLY_IIR_FACTOR;
+    sv->lock.early_power += sv->lock.early_sine   * sv->lock.early_sine
+                          + sv->lock.early_cosine * sv->lock.early_cosine;
+                             
+    sv->lock.early_power_not_reset -= sv->lock.early_power_not_reset/LATE_EARLY_IIR_FACTOR;
+    sv->lock.early_power_not_reset += sv->lock.early_sine   * sv->lock.early_sine
+                                    + sv->lock.early_cosine * sv->lock.early_cosine;
+}
+
+/*********************************************************************
+* Update the "code received late" power levels
+*********************************************************************/
+static void update_late(struct Space_vehicle *sv, int prompt_code_index, int prompt_code_index_next_cycle) {
+
+#if DOUBLECHECK_PROMPT_CODE_INDEX
+    int late_code_index;
+    late_code_index   = (prompt_code_index == 0) ? CHIPS_PER_MS-1: prompt_code_index-1;
+
+    /* This should never be true, but just in case... */
+    if(prompt_code_index == prompt_code_index_next_cycle) {
+        printf("Bad prompt_code_index in update_late()\n");
+        return;
+    }
+    
+
+    /***********************************************************
+    * Is this the last data bit for this repeat of the prompt C/A code?
+    ***********************************************************/
+    if(late_code_index != CHIPS_PER_MS-1) {
+        printf("Bad prompt_code_index in update_late()\n");
+        return;
+    }
+#endif
+
+    sv->lock.late_sine   = sv->lock.late_sine_count   - sv->lock.late_sine_count_last   - samples_per_ms/4;
+    sv->lock.late_cosine = sv->lock.late_cosine_count - sv->lock.late_cosine_count_last - samples_per_ms/4;
+    sv->lock.late_sine_count_last   = sv->lock.late_sine_count;
+    sv->lock.late_cosine_count_last = sv->lock.late_cosine_count;
+
+    sv->lock.late_power -= sv->lock.late_power/LATE_EARLY_IIR_FACTOR;
+        
+    sv->lock.late_power += sv->lock.late_sine   * sv->lock.late_sine
+                         + sv->lock.late_cosine * sv->lock.late_cosine;
+                            
+    sv->lock.late_power_not_reset -= sv->lock.late_power_not_reset/LATE_EARLY_IIR_FACTOR;        
+    sv->lock.late_power_not_reset += sv->lock.late_sine   * sv->lock.late_sine
+                                   + sv->lock.late_cosine * sv->lock.late_cosine;
+                            
+#if LOCK_SHOW_PER_MS_POWER
+    printf("%2i: %6i, %6i, %6i\n", sv->id,
+    sv->lock.early_power_not_reset/LATE_EARLY_IIR_FACTOR,
+    sv->lock.prompt_power,
+    sv->lock.late_power_not_reset/LATE_EARLY_IIR_FACTOR);
+#endif
+}
 
 /*********************************************************************
 * Track the phase of the carrier using the vector of the prompt 
 * signal to tune the NCO
 *********************************************************************/
 static void adjust_prompt(struct Space_vehicle *sv) {
-    int s = sv->lock.prompt_sine_power;
-    int c = sv->lock.prompt_cosine_power;
+    int s, c;
+    int_8 delta;
     int adjust = 0;
     uint_8 angle;
-    int_8 delta;
     uint_8 this_bit;
 
-    #if LOCK_SHOW_PER_MS_IQ
-    printf("%2i-%4i:  %6i, %6i\n", sv->id, sv->lock.code_nco>>22, 
-    sv->lock.prompt_sine_power, sv->lock.prompt_cosine_power);
-#endif        
+    s = sv->lock.prompt_sine;
+    c = sv->lock.prompt_cosine;
     while(c > 15 || c < -15 || s > 15 || s < -15) {
         c /= 2;
         s /= 2;
@@ -1769,12 +1832,14 @@ static void adjust_prompt(struct Space_vehicle *sv) {
     angle = atan2_lookup[c][s];
     delta = angle - sv->lock.last_angle;
     sv->lock.last_angle = angle;
-    sv->lock.delta_filtered -= sv->lock.delta_filtered / LOCK_DELTA_IIR_FACTOR;
+ 
+   sv->lock.delta_filtered -= sv->lock.delta_filtered / LOCK_DELTA_IIR_FACTOR;
     sv->lock.delta_filtered += delta;
+
     adjust = angle;
     sv->lock.angle_filtered -= sv->lock.angle_filtered / LOCK_ANGLE_IIR_FACTOR;
-  
     sv->lock.angle_filtered += angle;
+
     if(angle >=128)
         sv->lock.angle_filtered -= 256;
 
@@ -1786,7 +1851,7 @@ static void adjust_prompt(struct Space_vehicle *sv) {
     printf("%6i, %6i, %3i,%4i,%6i, %6i, %6i\n",sv->lock.prompt_sine_power, sv->lock.prompt_cosine_power, angle,delta, sv->lock.delta_filtered, adjust, sv->lock.phase_nco_step);
 #endif    
   
-    if(sv->lock.prompt_cosine_power < 0)
+    if(sv->lock.prompt_cosine < 0)
         this_bit = 0;
     else
         this_bit = 1;
@@ -1829,49 +1894,48 @@ static void adjust_prompt(struct Space_vehicle *sv) {
 * Slow path for a single sample, used when the code phase NCO will 
 * roll over and adjustments are needed
 *********************************************************************/
-static void update_prompt(struct Space_vehicle *sv, int sample) {
-    int prompt_code_index, prompt_code_index_next_cycle;
-    
-    uint_8 sine_positive, cosine_positive;
-    prompt_code_index            = sv->lock.code_nco>>22;
-    
-    /***********************************************************
-    * What is our current sein()/cosine() (I/Q) value?
-    ***********************************************************/
-    sine_positive   = (sv->lock.phase_nco_sine   & 0x80000000) ? 0 : 1;
-    cosine_positive = (sv->lock.phase_nco_cosine & 0x80000000) ? 0 : 1;
-
-    if(sv->gold_code[prompt_code_index] ^ sample) {
-        if(sine_positive)   sv->lock.prompt_sine_total++;
-        if(cosine_positive) sv->lock.prompt_cosine_total++;
+static void update_prompt(struct Space_vehicle *sv, int prompt_code_index, int prompt_code_index_next_cycle) {
+#if DOUBLECHECK_PROMPT_CODE_INDEX
+    /*************************************************
+    * This should never be true, but just in case... 
+    *************************************************/
+    if(prompt_code_index == prompt_code_index_next_cycle) {
+        printf("Bad prompt_code_index in update_prompt()\n");
+        return;
     }
-
+    
     /***********************************************************
-    * Is this the last data bit for this repeat of the prompt C/A code?
+    * Make sure that this is the last data bit for this 
+    * repeat of the prompt C/A code?
     ***********************************************************/
-    if(prompt_code_index != CHIPS_PER_MS-1) 
+    /* This too should never be true, but just in case... */
+    if(prompt_code_index != CHIPS_PER_MS-1) {
+        printf("Bad prompt_code_index in update_prompt()\n");
         return;
-
-    prompt_code_index_next_cycle = (sv->lock.code_nco + sv->lock.code_nco_step)>>22;
-    if(prompt_code_index == prompt_code_index_next_cycle)
-        return;
-        
+    }
+#endif
     /***********************
     * Yes - so do the update 
     ***********************/
-    sv->lock.prompt_sine_power   = sv->lock.prompt_sine_total;
-    sv->lock.prompt_cosine_power = sv->lock.prompt_cosine_total;
+    sv->lock.prompt_sine   = sv->lock.prompt_sine_count   - sv->lock.prompt_sine_count_last    - samples_per_ms/4;
+    sv->lock.prompt_cosine = sv->lock.prompt_cosine_count - sv->lock.prompt_cosine_count_last  - samples_per_ms/4;
+    sv->lock.prompt_sine_count_last = sv->lock.prompt_sine_count;
+    sv->lock.prompt_cosine_count_last = sv->lock.prompt_cosine_count;
     
     sv->lock.prompt_power -= sv->lock.prompt_power/LATE_EARLY_IIR_FACTOR;
-    sv->lock.prompt_power += sv->lock.prompt_sine_total   * sv->lock.prompt_sine_total
-                           + sv->lock.prompt_cosine_total * sv->lock.prompt_cosine_total;
+    sv->lock.prompt_power += sv->lock.prompt_sine   * sv->lock.prompt_sine
+                           + sv->lock.prompt_cosine * sv->lock.prompt_cosine;
+
+#if LOCK_SHOW_PER_MS_IQ
+    printf("%2i-%4i:  (%6i, %6i)   %8i\n", sv->id, sv->lock.code_nco>>22, 
+    sv->lock.prompt_sine, sv->lock.prompt_cosine, sv->lock.prompt_power);
+#endif        
+
     if(sv->lock.prompt_power/LATE_EARLY_IIR_FACTOR < lock_lost_power) { 
         printf("Lock lost at power %u", sv->lock.prompt_power/LATE_EARLY_IIR_FACTOR);
         sv->state = state_acquiring;
         return;
     }
-    sv->lock.prompt_sine_total   = 0 - samples_per_ms/4;
-    sv->lock.prompt_cosine_total = 0 - samples_per_ms/4;
     adjust_prompt(sv);
 }
 
@@ -2029,6 +2093,7 @@ static void gps_process_sample(int s) {
   }
 
   for(sv = 0; sv < N_SV; sv++) {
+    int prompt_code_index, prompt_code_index_next_cycle;
     switch(space_vehicles[sv].state) {
        case state_acquiring:
             if(processed < samples_per_ms+100)
@@ -2038,12 +2103,31 @@ static void gps_process_sample(int s) {
             track(space_vehicles+sv);
             break;
        case state_locked:
-            update_early_late(space_vehicles+sv, s);
-            update_prompt(space_vehicles+sv, s);
+            prompt_code_index            = space_vehicles[sv].lock.code_nco>>22;
+            prompt_code_index_next_cycle = (space_vehicles[sv].lock.code_nco + space_vehicles[sv].lock.code_nco_step)>>22;
+
+            accumulate(space_vehicles+sv, s);
+
+            /* Are we about to flip over to a new code chip? */
+            if(prompt_code_index != prompt_code_index_next_cycle) {
+
+              if(prompt_code_index == CHIPS_PER_MS-2) 
+                 update_early(space_vehicles+sv, prompt_code_index, prompt_code_index_next_cycle);
+
+              if(prompt_code_index == CHIPS_PER_MS-1) 
+                update_prompt(space_vehicles+sv,  prompt_code_index, prompt_code_index_next_cycle);
+
+              if(prompt_code_index == 0) 
+                 update_late(space_vehicles+sv, prompt_code_index, prompt_code_index_next_cycle);
+
+              if(prompt_code_index == 1)
+                adjust_early_late(space_vehicles+sv);
+            }
             update_ncos(space_vehicles+sv);
             break;
        default:
             space_vehicles[sv].state = state_acquiring;
+            break;
     }
   }
   if(code_offset_in_ms>0)
@@ -2059,7 +2143,7 @@ static void gps_process_sample(int s) {
         for(i = 0; i < N_SV; i++)
             if(space_vehicles[i].state == state_locked)
                 locked++;
-        printf("Processing sample %i    %i locked\n",processed);
+        printf("Processing sample %i,   %i locked\n",processed);
      }
  #endif
 #if PRINT_LOCKED_NCO_VALUES
