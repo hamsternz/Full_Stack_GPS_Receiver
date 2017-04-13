@@ -65,12 +65,12 @@ SOFTWARE.
 * Factors that control the feedback loops for tracking the signals
 *******************************************************************/
 /* The factor used to smooth the early and late power levels */
-#define LATE_EARLY_IIR_FACTOR      64
+#define LATE_EARLY_IIR_FACTOR      16
 
 /* Filter constants for the angle and change in angle 
 * used for carrier locking */
-#define LOCK_DELTA_IIR_FACTOR       4
-#define LOCK_ANGLE_IIR_FACTOR       4
+#define LOCK_DELTA_IIR_FACTOR       8
+#define LOCK_ANGLE_IIR_FACTOR       8
 
 /*******************************************************************
 * To print out debugging information
@@ -1660,13 +1660,13 @@ static void adjust_early_late(struct Space_vehicle *sv) {
     adjust =  sv->lock.code_nco_trend;
 
     if(sv->lock.early_power/5 > sv->lock.late_power/4) {
-        sv->lock.late_power = (sv->lock.early_power*3+sv->lock.late_power)/4;
-        adjust += samples_per_ms*2;
-        sv->lock.code_nco_trend+=8;
+        sv->lock.late_power = (sv->lock.early_power*7+sv->lock.late_power)/8;
+        adjust += samples_per_ms*1;
+        sv->lock.code_nco_trend+=4;
     } else if(sv->lock.late_power/5 > sv->lock.early_power/4) {
-        sv->lock.early_power = (sv->lock.late_power*3+sv->lock.early_power)/4;
-        adjust  -= samples_per_ms*2;
-        sv->lock.code_nco_trend-=8;
+        sv->lock.early_power = (sv->lock.late_power*7+sv->lock.early_power)/8;
+        adjust  -= samples_per_ms*1;
+        sv->lock.code_nco_trend-=4;
     }
 
     if(adjust < 0) {
