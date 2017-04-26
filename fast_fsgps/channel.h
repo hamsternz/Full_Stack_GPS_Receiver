@@ -27,6 +27,10 @@ struct Channel {
    uint_8 ms_of_bit;
    uint_8 last_bit;
    uint_8 no_adjust;
+   uint_8 channel_allocated;
+   uint_8 sv_id;
 };
-void channel_startup(void);
-void channel_update(struct Channel *c, uint_32 data);
+void channel_startup(void (*phase_callback)(int,int));
+int  channel_add(int_8 sv_id, uint_32 step_if, uint_32 nco_code, int_32 code_tune);
+int  channel_remove(int handle);
+void channel_update(uint_32 data);

@@ -9,15 +9,25 @@ typedef int           int_32;
 typedef char          int_8;
 #include "channel.h"
 
+struct Channel channel;
 /************************************************
 *
 ************************************************/
-struct Channel channel;
+void channel_phase_callback(int sv_id, int ivalue) {
+  if(ivalue > 0)
+    putchar('1');
+  else
+    putchar('0');
+}
+/************************************************
+*
+************************************************/
 int main(int argc, char *argv[]) {
    static unsigned swap_bits[256];
    FILE *f;
-   struct Channel *c;
-   int q = 0;
+   int q;
+   uint_32 step_if, nco_code;
+   int_32 code_tune;
 
    for(q = 0; q < 256; q++) {
      swap_bits[q] = 0;
@@ -31,8 +41,6 @@ int main(int argc, char *argv[]) {
      if(q&0x80) swap_bits[q] |= 0x01;
    }
 
-   c = & channel;
-
    if(argc != 2) {
      printf("Please supply file name\n");
      return 0;
@@ -42,21 +50,17 @@ int main(int argc, char *argv[]) {
      printf("Unable to open file\n");
      return 0;
    }
-   channel_startup();
-
+   channel_startup(channel_phase_callback);
    /* Set the start values */
-   memset(c,0,sizeof(struct Channel));
-   c->nco_if    = 0;
-   c->step_if   = 0x40104800;
-   c->nco_code  = ((382)<<18);
-   c->step_code = 0x00040000;
-   c->code_tune = 10880;
+   step_if   = 0x40104800;
+   nco_code  = ((382)<<18);
+   code_tune = 10880;
+   channel_add(26, step_if, nco_code, code_tune);
 #if 0
-   c->nco_if    = 0;
-   c->step_if   = 0x3ff9eb5a;
-   c->nco_code  = ((11438)<<18);
-   c->step_code = 0x00040000;
-   c->code_tune = -4137;
+   step_if   = 0x3ff9eb5a;
+   nco_code  = ((11438)<<18);
+   code_tune = -4137;
+   channel_add(32, step_if, nco_code, code_tune);
 #endif
 //////////////////////////////////////////////////////////////////////////
 // 32: Lower band     491 upper band     513 Adjust   21   Freq guess -1521
@@ -66,7 +70,7 @@ int main(int argc, char *argv[]) {
 // lock code_nco & step       80000      40000 -4137
 //////////////////////////////////////////////////////////////////////////
 
-   for(q = 0; q < 16368*1000/32*20; q++) {
+   while(1) {
      uint_32 data;
      int ch;
 
@@ -83,7 +87,7 @@ int main(int argc, char *argv[]) {
      ch  = getc(f);
      if(ch == EOF) break;
      data |= swap_bits[ch]<<0;
-     channel_update(c,data);
+     channel_update(data);
    }
    return 0;
 }

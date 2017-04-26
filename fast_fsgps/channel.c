@@ -9,105 +9,138 @@ typedef int           int_32;
 typedef char          int_8;
 #include "channel.h"
 
-#define MS_PER_BIT  20
+/* Filter factors */
 #define LATE_EARLY_IIR_FACTOR       8
 #define LOCK_DELTA_IIR_FACTOR       8
 #define LOCK_ANGLE_IIR_FACTOR       8
 
+/* For Debug */
 #define LOCK_SHOW_ANGLES 0
+#define SHOW_CHANNEL_POWER 0
 
 #define ATAN2_SIZE 128
 uint_8 atan2_lookup[ATAN2_SIZE][ATAN2_SIZE];
 
-#if 1
-//////////////////////////////////////////////////////////////////////////
-// 26: Lower band     679 upper band     657 Adjust   16   Freq guess 3984
-// 
-// Lock band 18, Lock offset 389, step 400fed60,  Code NCO        0
-// lock_phase_nco_step  400fed60
-// lock code_nco & step       80000      40000 10836
-//////////////////////////////////////////////////////////////////////////
-uint_8 gold_code[1023] = {
-1, 1, 1, 1, 1, 1, 0, 0, 0, 1, 0, 1, 1, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 1, 0, 0, 1, 1, 0, 1, 1,
-0, 1, 1, 0, 1, 1, 0, 0, 1, 1, 1, 0, 1, 0, 1, 1, 1, 0, 1, 0, 1, 1, 0, 0, 0, 0, 1, 1, 0, 1, 1,
-1, 0, 1, 0, 1, 0, 1, 1, 0, 1, 1, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 1, 0, 1, 1, 1, 1, 0, 0, 0, 0,
-0, 1, 0, 0, 0, 1, 0, 0, 1, 1, 1, 0, 1, 1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 1, 1, 1, 0,
-1, 0, 1, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 0, 1, 0, 1, 1, 0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 0, 1, 1,
-0, 1, 1, 0, 1, 1, 1, 1, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0, 0, 1, 1, 0, 1, 1, 0, 0, 1, 0, 0, 1, 0,
-0, 0, 0, 1, 0, 1, 1, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 0, 1, 0, 1, 0, 0, 0, 1, 0, 1, 1, 1,
-1, 0, 0, 0, 0, 1, 1, 1, 0, 0, 1, 0, 0, 1, 1, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 0, 1, 1, 0, 0,
-1, 0, 0, 1, 0, 1, 1, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 0, 1, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1,
-1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 0, 0, 1, 1, 1, 0, 1, 1, 1, 0, 1, 1, 0, 0, 1, 0, 1,
-0, 1, 0, 1, 0, 1, 0, 1, 0, 0, 1, 1, 1, 1, 1, 1, 0, 1, 0, 0, 1, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1,
-1, 0, 0, 0, 0, 1, 0, 0, 0, 1, 1, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 1, 0, 1, 0, 0, 0, 1, 0, 1, 1,
-1, 1, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 0, 1, 1, 0, 0, 1,
-1, 0, 0, 0, 1, 1, 0, 0, 1, 0, 1, 0, 1, 0, 1, 1, 1, 1, 0, 1, 0, 0, 1, 0, 0, 1, 1, 1, 1, 0, 1,
-1, 1, 1, 1, 1, 0, 1, 1, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1, 1, 0, 0, 0, 1, 1, 0, 1, 0, 1, 0, 0, 1,
-1, 1, 0, 1, 0, 1, 1, 1, 0, 1, 1, 0, 0, 0, 1, 0, 0, 0, 0, 1, 1, 1, 0, 0, 1, 0, 1, 1, 0, 1, 1,
-1, 1, 0, 0, 0, 0, 1, 0, 1, 1, 1, 1, 0, 0, 1, 0, 0, 1, 0, 1, 1, 1, 1, 1, 0, 0, 0, 1, 0, 1, 1,
-0, 0, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 0, 0, 1, 1, 1, 0, 1, 1, 1,
-1, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 1, 0, 1, 0, 1, 0, 0, 0, 1, 1, 0,
-1, 0, 0, 0, 1, 0, 1, 1, 0, 0, 1, 0, 0, 0, 0, 0, 1, 1, 1, 0, 1, 0, 0, 1, 1, 1, 1, 1, 1, 0, 1,
-1, 0, 0, 0, 1, 1, 0, 1, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 0, 0, 1, 1, 0, 1, 0, 1, 1, 0, 1, 0,
-0, 0, 1, 0, 0, 1, 1, 1, 0, 1, 0, 1, 1, 1, 0, 0, 0, 0, 0, 1, 1, 0, 0, 1, 0, 0, 0, 0, 0, 1, 1,
-0, 1, 1, 1, 1, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0,
-1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 1, 1, 0, 0, 0, 0, 1, 0,
-0, 0, 1, 0, 0, 1, 1, 1, 1, 1, 0, 0, 1, 0, 0, 1, 1, 1, 0, 0, 0, 1, 1, 1, 1, 0, 0, 1, 1, 0, 1,
-1, 0, 1, 1, 1, 1, 1, 1, 0, 1, 0, 1, 1, 1, 1, 0, 0, 1, 1, 0, 0, 0, 1, 0, 1, 0, 0, 0, 1, 1, 1,
-0, 1, 1, 0, 0, 1, 0, 1, 1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 0, 1, 1, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0,
-1, 0, 1, 0, 1, 1, 0, 1, 1, 1, 0, 1, 0, 0, 0, 0, 1, 1, 0, 0, 0, 1, 0, 0, 0, 0, 1, 1, 0, 0, 1,
-0, 0, 1, 0, 1, 0, 0, 1, 1, 1, 0, 0, 1, 1, 0, 0, 0, 1, 0, 1, 0, 1, 1, 0, 1, 1, 0, 0, 0, 0, 0,
-0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 1, 0, 1, 0,
-0, 0, 0, 1, 1, 1, 0, 1, 0, 0, 1, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 1, 0, 1, 0, 0,
-0, 0, 1, 0, 0, 1, 1, 1, 1, 0, 1, 0, 1, 1, 1, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1,
-0, 1, 1, 1, 0, 0, 1, 0, 0, 1, 1, 0, 0, 0, 1, 1, 0, 1, 0, 1, 0, 1, 1, 1, 1, 1, 1, 0, 1, 0, 0
-};
-#endif
-#if 0
-//////////////////////////////////////////////////////////////////////////
-// 32: Lower band     491 upper band     513 Adjust   21   Freq guess -1521
-// 
-// Lock band 7, Lock offset 11438, step 3ff9eb5a,  Code NCO        0
-// lock_phase_nco_step  3ff9eb5a
-// lock code_nco & step       80000      40000 -4137
-//////////////////////////////////////////////////////////////////////////
+#define MAX_CHANNELS 8
+struct Channel channels[MAX_CHANNELS];
+int channels_used = 0;
 
-uint_8 gold_code[1023] = {
-1, 1, 1, 1, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 1, 1, 0, 0, 1, 1, 1, 0, 1, 1, 0, 0, 0, 1, 1, 0, 0,
-1, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0,
-0, 0, 1, 0, 0, 0, 1, 1, 1, 1, 0, 1, 0, 1, 0, 1, 0, 0, 1, 0, 0, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0,
-0, 0, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 0, 1, 1, 1, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1,
-0, 1, 0, 0, 1, 1, 1, 0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 1, 1, 1, 0, 0, 1, 0, 1, 1,
-0, 1, 0, 1, 0, 0, 0, 1, 1, 0, 0, 0, 1, 0, 0, 1, 1, 1, 0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 1, 0, 1,
-0, 1, 1, 0, 0, 1, 0, 0, 1, 1, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0,
-0, 0, 1, 1, 0, 0, 1, 1, 1, 1, 0, 1, 0, 1, 0, 0, 0, 0, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 0, 1,
-1, 0, 1, 1, 1, 0, 0, 1, 0, 1, 1, 1, 1, 0, 0, 1, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1,
-0, 0, 1, 0, 1, 0, 0, 1, 1, 1, 1, 1, 1, 0, 0, 1, 1, 1, 1, 0, 0, 1, 0, 0, 1, 1, 1, 0, 0, 0, 0,
-0, 0, 1, 0, 1, 0, 1, 0, 0, 1, 1, 0, 0, 0, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 1, 0, 1, 0, 1, 0, 1,
-1, 1, 0, 0, 1, 1, 0, 1, 1, 1, 1, 1, 0, 0, 0, 0, 1, 0, 1, 1, 1, 1, 1, 1, 0, 1, 1, 0, 0, 1, 1,
-1, 1, 1, 0, 0, 1, 0, 1, 1, 0, 0, 0, 0, 1, 1, 0, 1, 1, 1, 0, 0, 1, 1, 0, 1, 0, 1, 0, 1, 0, 1,
-0, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 1, 1, 0, 1, 0, 1, 1, 0, 1, 0, 0, 0, 0, 1, 1, 0, 1, 0,
-0, 0, 0, 1, 1, 1, 0, 0, 1, 1, 1, 1, 1, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 1, 0, 0, 1, 0, 1, 0, 0,
-0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 1, 1, 0, 1, 1, 1, 1, 0, 1, 1, 1, 0, 0, 1, 0, 1, 0, 0,
-1, 0, 0, 1, 1, 0, 0, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1, 1, 1, 0, 1, 0, 1, 0, 0, 1, 1, 1, 0, 1, 0,
-1, 1, 1, 1, 0, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1, 1, 0, 1, 0, 0, 1, 1, 1, 1, 0, 0, 1, 0, 1, 1, 1,
-0, 1, 0, 0, 1, 1, 0, 0, 0, 0, 1, 1, 0, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0,
-0, 1, 0, 1, 0, 0, 1, 1, 0, 1, 0, 1, 0, 0, 0, 1, 0, 0, 1, 1, 0, 1, 1, 1, 1, 0, 0, 1, 0, 0, 1,
-1, 0, 1, 1, 0, 1, 1, 1, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 1, 0, 1, 0, 1, 0, 0, 1, 1, 1, 0, 1, 1,
-0, 0, 0, 0, 0, 1, 1, 0, 0, 1, 0, 0, 0, 1, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 1, 1, 0, 0, 1, 1, 1,
-0, 0, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 0, 0, 1, 1, 1, 0, 0, 0, 0, 1, 0, 0, 0, 1, 1, 1, 1, 1, 1,
-0, 1, 0, 0, 0, 1, 0, 1, 0, 0, 0, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 0, 1,
-0, 0, 0, 0, 1, 0, 0, 1, 0, 1, 1, 1, 1, 0, 1, 1, 1, 0, 0, 1, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0,
-0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 0, 1, 1, 1, 1, 1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 1,
-0, 1, 0, 0, 1, 1, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0, 1, 0, 0, 1, 1, 1, 0, 0, 1, 0, 1, 1, 1, 1, 1,
-1, 1, 0, 0, 1, 0, 0, 0, 1, 0, 1, 1, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1,
-1, 0, 0, 1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 0, 0, 1, 1, 1, 0, 1, 0, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1,
-0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 0, 1, 0, 1, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 1, 0, 1,
-1, 1, 1, 0, 1, 0, 1, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 1, 0, 0, 1, 1, 1, 1, 1, 0, 0, 1, 1, 0, 0,
-1, 0, 0, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1,
-0, 0, 1, 0, 1, 1, 0, 0, 0, 0, 1, 0, 0, 1, 0, 1, 1, 1, 0, 0, 1, 1, 0, 0, 0, 1, 1, 0, 0, 1, 0
+#define MIN_SV_ID 1
+#define MAX_SV_ID 32
+uint_8 gold_codes[MAX_SV_ID+1][1023];
+
+struct Space_vehicle {
+   uint_8 sv_id;
+   uint_8 tap1;
+   uint_8 tap2;
+} space_vehicles[] = {
+  { 1,  2, 6},
+  { 2,  3, 7},
+  { 3,  4, 8},
+  { 4,  5, 9},
+  { 5,  1, 9},
+  { 6,  2,10},
+  { 7,  1, 8},
+  { 8,  2, 9},
+  { 9,  3,10},
+  {10,  2, 3},
+  {11,  3, 4},
+  {12,  5, 6},
+  {13,  6, 7},
+  {14,  7, 8},
+  {15,  8, 9},
+  {16,  9,10},
+  {17,  1, 4},
+  {18,  2, 5},
+  {19,  3, 6},
+  {20,  4, 7},
+  {21,  5, 8},
+  {22,  6, 9},
+  {23,  1, 3},
+  {24,  4, 6},
+  {25,  5, 7},
+  {26,  6, 8},
+  {27,  7, 9},
+  {28,  8,10},
+  {29,  1, 6},
+  {30,  2, 7},
+  {31,  3, 8},
+  {32,  4, 9}
 };
-#endif
+
+void (*phase_callback)(int sv_id, int phase);
+
+/***************************************
+* Space to hold the current bitmaps info,
+* to reduce the need to pass pointers
+***************************************/
+static uint_32 early_code,  early_mask;
+static uint_32 prompt_code, prompt_mask;
+static uint_32 late_code,   late_mask;
+static int early_end_of_repeat;
+static int prompt_end_of_repeat;
+static int late_end_of_repeat;
+
+/**********************************************************************
+* Generate the G1 LFSR bit stream
+**********************************************************************/
+static void g1_lfsr(unsigned char *out) {
+  int state = 0x3FF,i;
+  for(i = 0; i < 1023; i++) {
+    int new_bit;
+    out[i]   = (state >>9) & 0x1;
+    /* Update the G1 LFSR */
+    new_bit = ((state >>9) ^ (state >>2))&1;
+    state   = ((state << 1) | new_bit) & 0x3FF;
+  }
+}
+
+/**********************************************************************
+* Generate the G2 LFSR bit stream. Different satellites have different
+* taps, which effectively alters the relative phase of G1 vs G2 codes
+**********************************************************************/
+static void g2_lfsr(unsigned char tap0, unsigned char tap1, unsigned char *out) {
+  int state = 0x3FF,i;
+  /* Adjust tap number from 1-10 to 0-9 */
+  tap0--;
+  tap1--;
+  for(i = 0; i < 1023; i++) {
+    int new_bit;
+
+    out[i] = ((state >> tap0) ^ (state >> tap1)) & 0x1;
+
+    /* Update the G2 LFSR  */
+    new_bit = ((state >>9) ^ (state >>8) ^
+               (state >>7) ^ (state >>5) ^
+               (state >>2) ^ (state >>1))&1;
+    state = ((state << 1) | new_bit) & 0x3FF;
+  }
+}
+
+/**********************************************************************
+* Combine the G1 and G2 codes to make each satellites code
+**********************************************************************/
+static void combine_g1_and_g2(unsigned char *g1, unsigned char *g2, unsigned char *out)
+{
+  int i;
+  for(i = 0; i < 1023; i++ ) {
+    out[i] = g1[i] ^ g2[i];
+  }
+}
+
+/*********************************************************************
+* Build the Gold codes for each Satellite from the G1 and G2 streams
+*********************************************************************/
+void generate_gold_codes(void) {
+  int sv;
+  static unsigned char g1[1023];
+  static unsigned char g2[1023];
+  g1_lfsr(g1);
+  for(sv = 0; sv < sizeof(space_vehicles)/sizeof(struct Space_vehicle); sv++) {
+    g2_lfsr(space_vehicles[sv].tap1, space_vehicles[sv].tap2, g2);
+    combine_g1_and_g2(g1, g2, gold_codes[ space_vehicles[sv].sv_id]);
+  }
+}
 
 /*********************************************************************
 * Generate the atan2 table
@@ -139,8 +172,9 @@ void generate_atan2_table(void) {
     }
 #endif
 }
+
 /************************************************
-*
+* A quick way to calculat the number of set bits
 ************************************************/
 int count_ones(uint_32 a) {
   int rtn;
@@ -163,16 +197,11 @@ int count_ones(uint_32 a) {
   rtn += ones_lookup[(a>>24) & 0xFF];
   return rtn;
 }
-/************************************************
-*
-************************************************/
-static uint_32 early_code,  early_mask;
-static uint_32 prompt_code, prompt_mask;
-static uint_32 late_code,   late_mask;
-static int early_end_of_repeat;
-static int prompt_end_of_repeat;
-static int late_end_of_repeat;
 
+
+/************************************************
+* The NCO that generates the Gold code bistream
+************************************************/
 void fast_code_nco(uint_8 *gc, uint_32 nco, uint_32 step) {
   int i,n0,n1,n2;
   int wrap0=0, wrap1=0, wrap2=0, wrap3=0;
@@ -229,11 +258,9 @@ void fast_code_nco(uint_8 *gc, uint_32 nco, uint_32 step) {
   late_code   <<= n1;
   prompt_code <<= n1;
   early_code  <<= n1;
-#if 1
   if(code0) late_code   |= (1<<n1)-1;
   if(code1) prompt_code |= (1<<n1)-1;
   if(code2) early_code  |= (1<<n1)-1;
-#endif
 
   /***************************************************
   * Third (and not always present) code bit in results 
@@ -296,18 +323,18 @@ void fast_code_nco(uint_8 *gc, uint_32 nco, uint_32 step) {
 ************************************************/
 void fast_IF_nco_mask_8(uint_32 nco, uint_32 step, uint_32 *s, uint_32 *c) {
   int j;
-#if 1
   uint_32 nco_in_8;
+
   nco_in_8 = nco + step*8;
   if( ((nco^nco_in_8) & 3<<30) == 0) {
     switch(nco>>30) {
-      case 0: *s = (*s<<8) | 0xCC;//xx
+      case 0: *s = (*s<<8) | 0xCC;
               *c = (*c<<8) | 0x99;
               break;
-      case 1: *s = (*s<<8) | 0x99; //X
+      case 1: *s = (*s<<8) | 0x99;
               *c = (*c<<8) | 0x33;
               break;
-      case 2: *s = (*s<<8) | 0x33; //
+      case 2: *s = (*s<<8) | 0x33;
               *c = (*c<<8) | 0x66;
               break;
       case 3: *s = (*s<<8) | 0x66;
@@ -316,7 +343,7 @@ void fast_IF_nco_mask_8(uint_32 nco, uint_32 step, uint_32 *s, uint_32 *c) {
     }
     return;
   }
-#endif
+
   for(j = 0; j < 8; j++) {
      switch(nco>>30) {
        case 0: *s = (*s << 1) | 1;
@@ -337,7 +364,6 @@ void fast_IF_nco_mask_8(uint_32 nco, uint_32 step, uint_32 *s, uint_32 *c) {
 }
 
 void fast_IF_nco_mask_16(uint_32 nco, uint_32 step, uint_32 *s, uint_32 *c) {
-#if 0
   uint_32 nco_in_16;
   nco_in_16 = nco + step*16;
   if(((nco^nco_in_16) & 3<<30) == 0) {
@@ -357,14 +383,13 @@ void fast_IF_nco_mask_16(uint_32 nco, uint_32 step, uint_32 *s, uint_32 *c) {
     }
     return;
   } 
-#endif
-    fast_IF_nco_mask_8(nco, step, s, c);
-    nco += step * 8;
-    fast_IF_nco_mask_8(nco, step, s, c);
+
+  fast_IF_nco_mask_8(nco, step, s, c);
+  nco += step * 8;
+  fast_IF_nco_mask_8(nco, step, s, c);
 }
 
 void fast_IF_nco_mask(uint_32 nco, uint_32 step, uint_32 *s, uint_32 *c) {
-#if 1
   uint_32 nco_in_32;
   nco_in_32 = nco+step*32;
   if( ((nco^nco_in_32) & 3<<30) == 0) {
@@ -384,18 +409,20 @@ void fast_IF_nco_mask(uint_32 nco, uint_32 step, uint_32 *s, uint_32 *c) {
     }
     return;
   }
-#endif
+
   fast_IF_nco_mask_16(nco, step, s, c);
   nco += step*16;
   fast_IF_nco_mask_16(nco, step, s, c);
 }
 
+/************************************************
+*
+************************************************/
 static void adjust_prompt(struct Channel *ch) {
     int s, c;
     int_8 delta;
     int adjust = 0;
     uint_8 angle;
-    uint_8 this_bit;
 
     s = ch->prompt_sine_count;
     c = ch->prompt_cosine_count;
@@ -427,57 +454,45 @@ static void adjust_prompt(struct Channel *ch) {
     printf("%6i, %6i, %3i,%4i,%6i, %6i, %6i\n",ch->prompt_sine_count, ch->prompt_cosine_count, angle,delta, ch->delta_filtered, adjust, ch->step_if);
 #endif
 
-    if(ch->prompt_cosine_count < 0)
-        this_bit = 0;
-    else
-        this_bit = 1;
-    putchar('0'+this_bit);
+    /* Pass the phase info to the external design */
+    phase_callback(ch->sv_id, ch->prompt_cosine_count);
+}
 
-    ch->ms_of_bit++;
-    if(ch->ms_of_bit == MS_PER_BIT || ch->last_bit != this_bit)
-        ch->ms_of_bit = 0;
-    ch->last_bit = this_bit;
+/************************************************
+*
+************************************************/
+int  channel_add(int_8 sv_id, uint_32 step_if, uint_32 nco_code, int_32 code_tune) {
+  if(channels_used == MAX_CHANNELS)
+     return -1;
+  if(sv_id > MAX_SV_ID || sv_id < MIN_SV_ID)
+     return -1;
 
-#if 0
-    /* WIll need to be moved outside of channel */
-    if(sv->lock.ms_of_frame == MS_PER_BIT*BITS_PER_FRAME-1) {
-        sv->lock.ms_of_frame = 0;
-        if(sv->navdata.subframe_of_week == 7*24*60*60/6-1) {
-            sv->navdata.subframe_of_week=0;
-        } else {
-            sv->navdata.subframe_of_week++;
-        }
-    } else {
-        sv->lock.ms_of_frame++;
-    }
-#endif
-//    nav_process(sv,this_bit);
-
-#if LOCK_SHOW_BITS
-    if(sv->lock_ms_of_bit == 0)
-        putchar('\n');
-    putchar('0'+this_bit);
-#endif
-
-#if LOCK_SHOW_BPSK_PHASE_PER_MS
-    if(sv->bits_file) {
-        if(sv->lock_ms_of_bit == 0)
-            putc('\n',sv->bits_file);
-        putc('0'+this_bit,sv->bits_file);
-    }
-#endif
-
+  channels[channels_used].sv_id     = sv_id;
+  channels[channels_used].step_if   = step_if;
+  channels[channels_used].nco_code  = nco_code;
+  channels[channels_used].code_tune = code_tune;
+  channels[channels_used].step_code = 0x00040000;
+  channels_used++;
+  return channels_used-1;
 }
 /************************************************
 *
 ************************************************/
-void channel_startup(void) {
+void channel_startup(void (*callback)(int sv_id, int phase)) {
+   phase_callback = callback; 
    generate_atan2_table();
+   generate_gold_codes();
+   channels_used = 0;
 }
+
 /************************************************
 *
 ************************************************/
-void channel_update(struct Channel *c, uint_32 data) {
+void channel_update(uint_32 data) {
+  int ch_no;
+  struct Channel *c=channels;
+
+  for(ch_no = 0; ch_no < channels_used; ch_no++) {
      uint_32 mixed_sine, mixed_cosine;
      uint_32 s_intermediate_freq=0, c_intermediate_freq=0;
   
@@ -486,7 +501,7 @@ void channel_update(struct Channel *c, uint_32 data) {
 
      /* Generate the gold codes for this set of samples
         and advance the NCO     */ 
-     fast_code_nco(gold_code, c->nco_code, c->step_code);
+     fast_code_nco(gold_codes[c->sv_id], c->nco_code, c->step_code);
      {
      int i;
      for(i = 0; i < 32; i++) {
@@ -520,7 +535,9 @@ void channel_update(struct Channel *c, uint_32 data) {
          c->early_power_filtered += c->early_sine_count*c->early_sine_count + c->early_cosine_count*c->early_cosine_count;
          c->early_power_filtered_not_reset -= c->early_power_filtered_not_reset/LATE_EARLY_IIR_FACTOR;
          c->early_power_filtered_not_reset += c->early_sine_count*c->early_sine_count + c->early_cosine_count*c->early_cosine_count;
-//         printf("%7i, ", c->early_power_filtered_not_reset);
+#if SHOW_CHANNEL_POWER
+         printf("%7i, ", c->early_power_filtered_not_reset);
+#endif
          c->early_sine_count   = next_sine;
          c->early_cosine_count = next_cosine;
          c->early_sample_count = next_sample_count;
@@ -548,7 +565,9 @@ void channel_update(struct Channel *c, uint_32 data) {
          c->prompt_cosine_count -= next_cosine + c->prompt_sample_count/2;
          c->prompt_power_filtered -= c->prompt_power_filtered/LATE_EARLY_IIR_FACTOR;
          c->prompt_power_filtered += c->prompt_sine_count*c->prompt_sine_count + c->prompt_cosine_count*c->prompt_cosine_count;
-//         printf(" %7i, ", c->prompt_power_filtered);
+#if SHOW_CHANNEL_POWER
+         printf(" %7i, ", c->prompt_power_filtered);
+#endif
          adjust_prompt(c);
          c->prompt_sc_temp = c->prompt_sine_count;
          c->prompt_cc_temp = c->prompt_cosine_count;
@@ -582,7 +601,9 @@ void channel_update(struct Channel *c, uint_32 data) {
          c->late_power_filtered += c->late_sine_count*c->late_sine_count + c->late_cosine_count*c->late_cosine_count;
          c->late_power_filtered_not_reset -= c->late_power_filtered_not_reset/LATE_EARLY_IIR_FACTOR;
          c->late_power_filtered_not_reset += c->late_sine_count*c->late_sine_count + c->late_cosine_count*c->late_cosine_count;
-//         printf(" %7i\n", c->late_power_filtered_not_reset);
+#if SHOW_CHANNEL_POWER
+         printf(" %7i\n", c->late_power_filtered_not_reset);
+#endif
          c->late_sine_count   = next_sine;
          c->late_cosine_count = next_cosine;
          c->late_sample_count = next_sample_count;
@@ -605,4 +626,9 @@ void channel_update(struct Channel *c, uint_32 data) {
          c->no_adjust = 1;
       }
       c->no_adjust = 0;
+      c++;
+   }
 }
+/******************************************************
+* END OF FILE
+******************************************************/
