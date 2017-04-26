@@ -9,7 +9,7 @@ typedef int           int_32;
 typedef char          int_8;
 
 #define MS_PER_BIT  20
-#define LATE_EARLY_IIR_FACTOR      8
+#define LATE_EARLY_IIR_FACTOR       8
 #define LOCK_DELTA_IIR_FACTOR       8
 #define LOCK_ANGLE_IIR_FACTOR       8
 
@@ -169,6 +169,7 @@ static uint_32 late_code,   late_mask;
 static int early_end_of_repeat;
 static int prompt_end_of_repeat;
 static int late_end_of_repeat;
+int nn0;
 void fast_code_nco(uint_8 *gc, uint_32 nco, uint_32 step) {
   int i,n0,n1,n2;
   int wrap0=0, wrap1=0, wrap2=0, wrap3=0;
@@ -203,6 +204,7 @@ void fast_code_nco(uint_8 *gc, uint_32 nco, uint_32 step) {
 	  nco += step;
 	  n0++;
   }
+  nn0 = n0;
 
   while((nco < (2<<22)) && n0+n1 < 32) {
 	  nco += step;
@@ -225,9 +227,11 @@ void fast_code_nco(uint_8 *gc, uint_32 nco, uint_32 step) {
   late_code   <<= n1;
   prompt_code <<= n1;
   early_code  <<= n1;
+#if 1
   if(code0) late_code   |= (1<<n1)-1;
   if(code1) prompt_code |= (1<<n1)-1;
   if(code2) early_code  |= (1<<n1)-1;
+#endif
 
   /***************************************************
   * Third (and not always present) code bit in results 
@@ -236,11 +240,9 @@ void fast_code_nco(uint_8 *gc, uint_32 nco, uint_32 step) {
 	late_code   <<= n2;
 	prompt_code <<= n2;
 	early_code  <<= n2;
-#if 1
 	if(code1) late_code   |= (1<<n2)-1;
 	if(code2) prompt_code |= (1<<n2)-1;
 	if(code3) early_code  |= (1<<n2)-1;
-#endif
   }
 
   early_end_of_repeat  = 0;
@@ -268,12 +270,10 @@ void fast_code_nco(uint_8 *gc, uint_32 nco, uint_32 step) {
 	  prompt_mask = 0xFFFFFFFF;
 	  prompt_mask >>= n0;
           prompt_end_of_repeat = 1;
-//          printf("A %i %08X\n",n0,prompt_mask);
   } else if(wrap2 && (nco >= (2<<22))) {
 	  prompt_mask = 0xFFFFFFFF;
 	  prompt_mask >>= n0;
 	  prompt_mask >>= n1;
-//          printf("A %i %08X\n",n0,prompt_mask);
           prompt_end_of_repeat = 1;
   }
 
@@ -294,38 +294,40 @@ void fast_code_nco(uint_8 *gc, uint_32 nco, uint_32 step) {
 ************************************************/
 void fast_IF_nco_mask_8(uint_32 nco, uint_32 step, uint_32 *s, uint_32 *c) {
   int j;
+#if 1
   uint_32 nco_in_8;
   nco_in_8 = nco + step*8;
   if( ((nco^nco_in_8) & 3<<30) == 0) {
     switch(nco>>30) {
-      case 0: *s = (*s>>8) | 0x33000000;
-              *c = (*c>>8) | 0x99000000;
+      case 1: *s = (*s<<8) | 0x33;
+              *c = (*c<<8) | 0x99;
               break;
-      case 1: *s = (*s>>8) | 0x99000000;
-              *c = (*c>>8) | 0xCC000000;
+      case 0: *s = (*s<<8) | 0x99;
+              *c = (*c<<8) | 0xCC;
               break;
-      case 2: *s = (*s>>8) | 0xCC000000;
-              *c = (*c>>8) | 0x66000000;
+      case 3: *s = (*s<<8) | 0xCC;
+              *c = (*c<<8) | 0x66;
               break;
-      case 3: *s = (*s>>8) | 0x66000000;
-              *c = (*c>>8) | 0x33000000;
+      case 2: *s = (*s<<8) | 0x66;
+              *c = (*c<<8) | 0x33;
               break;
     }
     return;
   }
+#endif
   for(j = 0; j < 8; j++) {
      switch(nco>>30) {
-       case 0: *s = (*s >> 1) | (1<<31);
-               *c = (*c >> 1) | (1<<31);
+       case 0: *s = (*s << 1) | 1;
+               *c = (*c << 1) | 1;
                break;
-       case 1: *s = (*s >> 1) | (1<<31);
-               *c = (*c >> 1) | (0<<31);
+       case 1: *s = (*s << 1) | 1;
+               *c = (*c << 1) | 0;
                break;
-       case 2: *s = (*s >> 1) | (0<<31);
-               *c = (*c >> 1) | (0<<31);
+       case 2: *s = (*s << 1) | 0;
+               *c = (*c << 1) | 0;
                break;
-       case 3: *s = (*s >> 1) | (0<<31);
-               *c = (*c >> 1) | (1<<31);
+       case 3: *s = (*s << 1) | 0;
+               *c = (*c << 1) | 1;
                break;
      }
      nco += step;
@@ -333,52 +335,54 @@ void fast_IF_nco_mask_8(uint_32 nco, uint_32 step, uint_32 *s, uint_32 *c) {
 }
 
 void fast_IF_nco_mask_16(uint_32 nco, uint_32 step, uint_32 *s, uint_32 *c) {
+#if 1
   uint_32 nco_in_16;
-
   nco_in_16 = nco + step*16;
   if(((nco^nco_in_16) & 3<<30) == 0) {
     switch(nco>>30) {
-      case 0: *s = (*s>>16) | 0x33330000;
-              *c = (*c>>16) | 0x99990000;
+      case 1: *s = (*s<<16) | 0x3333;
+              *c = (*c<<16) | 0x9999;
               break;
-      case 1: *s = (*s>>16) | 0x99990000;
-              *c = (*c>>16) | 0xCCCC0000;
+      case 0: *s = (*s<<16) | 0x9999;
+              *c = (*c<<16) | 0xCCCC;
               break;
-      case 2: *s = (*s>>16) | 0xCCCC0000;
-              *c = (*c>>16) | 0x66660000;
+      case 3: *s = (*s<<16) | 0xCCCC;
+              *c = (*c<<16) | 0x6666;
               break;
-      case 3: *s = (*s>>16) | 0x66660000;
-              *c = (*c>>16) | 0x33330000;
+      case 2: *s = (*s<<16) | 0x6666;
+              *c = (*c<<16) | 0x3333;
               break;
     }
     return;
   } 
+#endif
     fast_IF_nco_mask_8(nco, step, s, c);
     nco += step * 8;
     fast_IF_nco_mask_8(nco, step, s, c);
 }
 
 void fast_IF_nco_mask(uint_32 nco, uint_32 step, uint_32 *s, uint_32 *c) {
+#if 1
   uint_32 nco_in_32;
-
   nco_in_32 = nco+step*32;
   if( ((nco^nco_in_32) & 3<<30) == 0) {
     switch(nco>>30) {
-      case 0: *s = 0x33333333;
+      case 1: *s = 0x33333333;
               *c = 0x99999999;
               break;
-      case 1: *s = 0x99999999;
+      case 0: *s = 0x99999999;
               *c = 0xCCCCCCCC;
               break;
-      case 2: *s = 0xCCCCCCCC;
+      case 3: *s = 0xCCCCCCCC;
               *c = 0x66666666;
               break;
-      case 3: *s = 0x66666666;
+      case 2: *s = 0x66666666;
               *c = 0x33333333;
               break;
     }
     return;
   }
+#endif
   fast_IF_nco_mask_16(nco, step, s, c);
   nco += step*16;
   fast_IF_nco_mask_16(nco, step, s, c);
@@ -494,9 +498,22 @@ static void adjust_prompt(struct Channel *ch) {
 *
 ************************************************/
 int main(int argc, char *argv[]) {
+   static unsigned swap_bits[256];
    FILE *f;
    struct Channel *c;
    int q = 0;
+
+   for(q = 0; q < 256; q++) {
+     swap_bits[q] = 0;
+     if(q&0x01) swap_bits[q] |= 0x80;
+     if(q&0x02) swap_bits[q] |= 0x40;
+     if(q&0x04) swap_bits[q] |= 0x20;
+     if(q&0x08) swap_bits[q] |= 0x10;
+     if(q&0x10) swap_bits[q] |= 0x08;
+     if(q&0x20) swap_bits[q] |= 0x04;
+     if(q&0x40) swap_bits[q] |= 0x02;
+     if(q&0x80) swap_bits[q] |= 0x01;
+   }
 
    c = & channel;
 
@@ -532,26 +549,27 @@ int main(int argc, char *argv[]) {
 // lock_phase_nco_step  3ff9eb5a
 // lock code_nco & step       80000      40000 -4137
 //////////////////////////////////////////////////////////////////////////
+   getc(f);
 
-   for(q = 0; q < 16368*1000/32*20; q++) {
+   for(q = 0; q < 16368*1000/32*2000; q++) {
      uint_32 data;
      uint_32 mixed_sine, mixed_cosine;
-     uint_32 s_intermediate_freq, c_intermediate_freq;
+     uint_32 s_intermediate_freq=0, c_intermediate_freq=0;
      int ch;
 
      /* Read the data */
      ch  = getc(f);
      if(ch == EOF) break;
-     data  = ch<<24;
+     data  = swap_bits[ch]<<24;
      ch  = getc(f);
      if(ch == EOF) break;
-     data |= ch<<16;
+     data |= swap_bits[ch]<<16;
      ch = getc(f);
      if(ch == EOF) break;
-     data |= ch<<8;
+     data |= swap_bits[ch]<<8;
      ch  = getc(f);
      if(ch == EOF) break;
-     data |= ch;
+     data |= swap_bits[ch]<<0;
 
      /* Generate the intermediate frequency bitmaps
         and advance the NCO     */ 
@@ -618,9 +636,9 @@ int main(int argc, char *argv[]) {
          next_cosine       = count_ones(mixed_cosine & prompt_mask);
          next_sample_count = count_ones(prompt_mask);
          c->prompt_sample_count -= next_sample_count;
-         c->prompt_sine_count   -= next_sine   + 16368/2; // c->prompt_sample_count/2;
-         c->prompt_cosine_count -= next_cosine + 16368/2; // c->prompt_sample_count/2;
-         c->prompt_power_filtered -= c->prompt_power_filtered/8;
+         c->prompt_sine_count   -= next_sine   + c->prompt_sample_count/2;
+         c->prompt_cosine_count -= next_cosine + c->prompt_sample_count/2;
+         c->prompt_power_filtered -= c->prompt_power_filtered/LATE_EARLY_IIR_FACTOR;
          c->prompt_power_filtered += c->prompt_sine_count*c->prompt_sine_count + c->prompt_cosine_count*c->prompt_cosine_count;
          printf(" %7i, ", c->prompt_power_filtered);
          adjust_prompt(c);
@@ -656,7 +674,7 @@ int main(int argc, char *argv[]) {
          c->late_power_filtered += c->late_sine_count*c->late_sine_count + c->late_cosine_count*c->late_cosine_count;
          c->late_power_filtered_not_reset -= c->late_power_filtered_not_reset/LATE_EARLY_IIR_FACTOR;
          c->late_power_filtered_not_reset += c->late_sine_count*c->late_sine_count + c->late_cosine_count*c->late_cosine_count;
-         printf(" %7i\n", c->late_power_filtered_not_reset);
+         printf(" %7i, %2i, %i\n", c->late_power_filtered_not_reset, nn0, c->nco_code);
          c->late_sine_count   = next_sine;
          c->late_cosine_count = next_cosine;
          c->late_sample_count = next_sample_count;
