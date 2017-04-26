@@ -92,7 +92,7 @@ SOFTWARE.
 
 /* Set PRINT_TRACK_POWER to '1' to print out the 
 * power levels during the track phase */
-#define PRINT_TRACK_POWER           1
+#define PRINT_TRACK_POWER           0
 #define PRINT_TRACK_SQUETCH         0
 
 /* Print out if a space vheicle falls out of lock */
@@ -101,7 +101,7 @@ SOFTWARE.
 /* Do we show the code NCO values? */
 #define PRINT_LOCKED_NCO_VALUES     0
 
-/* Show the initial values used for te NCOs when a lock
+/* Show the initial values used for the NCOs when a lock
 *  is obtained */
 #define LOCK_SHOW_INITIAL           1
 
@@ -2224,9 +2224,19 @@ void generateGoldCodes(void)
   g1_lfsr(g1);
   
   for(sv = 0; sv < N_SV; sv++) {
+    int i;
+
     printf("Calculating Gold Code for SV %i\n",space_vehicles[sv].id);
     g2_lfsr(space_vehicles[sv].tap1, space_vehicles[sv].tap2, g2[sv]);
     combine_g1_and_g2(g1, g2[sv], space_vehicles[sv].gold_code);
+    for(i = 0; i < 1023; i++) {
+      if(space_vehicles[sv].gold_code[i])
+        printf("1, ");
+      else
+        printf("0, ");
+      if(i%31 == 30)
+       printf("\n");
+    } 
   }
 }
 
