@@ -1,0 +1,10 @@
+fast_fsgps
+----------
+This is the speed enhanced version of fsgps. It uses the same techniques as
+the slow version, but is optmized to work with 16,368MHz sample rate.
+
+Because eveything is fixed, it can process data 32 bits at a time, and 
+can track 300x(!) faster than the original version.
+
+Changing it to a different or variable sample rate would be very hard, but
+you are willing to try.

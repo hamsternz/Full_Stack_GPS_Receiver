@@ -7,20 +7,10 @@ typedef unsigned char uint_8;
 typedef unsigned int  uint_32;
 typedef int           int_32;
 typedef char          int_8;
+#include "nav.h"
 #include "channel.h"
 
 struct Channel channel;
-/************************************************
-*
-************************************************/
-void channel_phase_callback(int sv_id, int ivalue) {
-  if(sv_id != 4)
-    return;
-  if(ivalue > 0)
-    putchar('1');
-  else
-    putchar('0');
-}
 /************************************************
 *
 ************************************************/
@@ -53,7 +43,8 @@ int main(int argc, char *argv[]) {
      printf("Unable to open file\n");
      return 0;
    }
-   channel_startup(channel_phase_callback);
+   nav_startup();
+   channel_startup(nav_add_bit);
 
    /* Set the start values */
 ////////////////////////////////////////////////
@@ -149,6 +140,24 @@ int main(int argc, char *argv[]) {
    while(1) {
      uint_32 data;
      int ch;
+     static int processed = 0;
+     if(processed % ((16368000/32)/20) == 0) {
+       int c;
+       printf("Update at %8.3f\n", processed/(double)(16368000/32));
+       printf("SV, WeekNum, FrameOfWeek, msOfFrame\n");
+       for(c = 0; c < channel_get_count(); c++) {
+         int sv;
+         sv = channel_get_sv_id(c);
+         printf("%02i, %7i,  %10i, %8.3f\n", 
+             channel_get_sv_id(c),
+             nav_week_num(sv),
+             nav_frame_of_week(sv),
+             nav_ms_of_frame(sv) + channel_get_nco_phase(c)/(channel_get_nco_limit()+1.0));
+       }
+       printf("\n");
+       printf("\n");
+     }
+     processed++;
 
      /* Read the data */
      ch  = getc(f);
@@ -164,6 +173,7 @@ int main(int argc, char *argv[]) {
      if(ch == EOF) break;
      data |= swap_bits[ch]<<0;
      channel_update(data);
+      
    }
    return 0;
 }

@@ -478,6 +478,34 @@ int  channel_add(int_8 sv_id, uint_32 step_if, uint_32 nco_code, int_32 code_tun
 /************************************************
 *
 ************************************************/
+int channel_get_count(void) {
+  return channels_used;
+}
+/************************************************
+*
+************************************************/
+uint_32 channel_get_sv_id(int handle) {
+  if(handle < 0 || handle >= channels_used)
+    return -1;
+  return channels[handle].sv_id;
+}
+/************************************************
+*
+************************************************/
+uint_32 channel_get_nco_phase(int handle) {
+  if(handle < 0 || handle >= channels_used)
+    return -1;
+  return channels[handle].nco_code;
+}
+/************************************************
+*
+************************************************/
+uint_32 channel_get_nco_limit(void) {
+   return (1023<<22)-1;
+}
+/************************************************
+*
+************************************************/
 void channel_startup(void (*callback)(int sv_id, int phase)) {
    phase_callback = callback; 
    generate_atan2_table();
@@ -493,6 +521,7 @@ void channel_update(uint_32 data) {
   struct Channel *c=channels;
 
   for(ch_no = 0; ch_no < channels_used; ch_no++) {
+     uint_32 new_nco_code;
      uint_32 mixed_sine, mixed_cosine;
      uint_32 s_intermediate_freq=0, c_intermediate_freq=0;
   
@@ -502,14 +531,12 @@ void channel_update(uint_32 data) {
      /* Generate the gold codes for this set of samples
         and advance the NCO     */ 
      fast_code_nco(gold_codes[c->sv_id], c->nco_code, c->step_code);
-     {
-     int i;
-     for(i = 0; i < 32; i++) {
-         c->nco_code += c->step_code;
-         if(c->nco_code >= (1023<<22))
-           c->nco_code -= 1023<<22;
-       } 
-     }
+     new_nco_code = c->nco_code + c->step_code*32;
+     if(new_nco_code < c->nco_code)
+        new_nco_code += 1<<22;
+     if(new_nco_code >= (1023<<22))
+        new_nco_code -= 1023<<22;
+     c->nco_code = new_nco_code;
 
      /*****************************
      * Process the early codes
