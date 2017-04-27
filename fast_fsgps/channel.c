@@ -9,6 +9,39 @@ typedef int           int_32;
 typedef char          int_8;
 #include "channel.h"
 
+struct Channel {
+   uint_32 nco_if;
+   uint_32 step_if;
+
+   uint_32 nco_code;
+   uint_32 step_code;
+   uint_32 code_tune;
+
+   int_32 early_sine_count,  early_cosine_count,  early_sample_count;
+   int_32 prompt_sine_count, prompt_cosine_count, prompt_sample_count;
+   int_32 late_sine_count,   late_cosine_count,   late_sample_count;
+
+   uint_32 early_power_filtered;
+   uint_32 prompt_power_filtered;
+   uint_32 late_power_filtered;
+
+   uint_32 early_power_filtered_not_reset;
+   uint_32 prompt_power_filtered_not_reset;
+   uint_32 late_power_filtered_not_reset;
+
+   int prompt_sc_temp;
+   int prompt_cc_temp;
+
+   uint_8 last_angle;
+   int_32 delta_filtered;
+   int_32 angle_filtered;
+   uint_8 ms_of_bit;
+   uint_8 last_bit;
+   uint_8 no_adjust;
+   uint_8 channel_allocated;
+   uint_8 sv_id;
+};
+
 /* Filter factors */
 #define LATE_EARLY_IIR_FACTOR       8
 #define LOCK_DELTA_IIR_FACTOR       8
@@ -206,6 +239,7 @@ void fast_code_nco(uint_8 *gc, uint_32 nco, uint_32 step) {
   int i,n0,n1,n2;
   int wrap0=0, wrap1=0, wrap2=0, wrap3=0;
   uint_8 codeSub1, code0, code1, code2, code3;
+  uint_32 mask;
   n0 = 1;
   i = nco>>22;
 
@@ -233,15 +267,16 @@ void fast_code_nco(uint_8 *gc, uint_32 nco, uint_32 step) {
   
   nco &= ((1<<22)-1);
   while(nco < (1<<22)) {
-	  nco += step;
-	  n0++;
+    nco += step;
+    n0++;
   }
 
   while((nco < (2<<22)) && n0+n1 < 32) {
-	  nco += step;
-	  n1++;
+    nco += step;
+    n1++;
   }
   n2 = 32 - (n0 + n1);
+
   late_code = prompt_code = early_code = 0;
 
   /***************************************************
@@ -258,9 +293,10 @@ void fast_code_nco(uint_8 *gc, uint_32 nco, uint_32 step) {
   late_code   <<= n1;
   prompt_code <<= n1;
   early_code  <<= n1;
-  if(code0) late_code   |= (1<<n1)-1;
-  if(code1) prompt_code |= (1<<n1)-1;
-  if(code2) early_code  |= (1<<n1)-1;
+  mask = (1<<n1)-1;
+  if(code0) late_code   |= mask;
+  if(code1) prompt_code |= mask;
+  if(code2) early_code  |= mask;
 
   /***************************************************
   * Third (and not always present) code bit in results 
@@ -269,9 +305,10 @@ void fast_code_nco(uint_8 *gc, uint_32 nco, uint_32 step) {
 	late_code   <<= n2;
 	prompt_code <<= n2;
 	early_code  <<= n2;
-	if(code1) late_code   |= (1<<n2)-1;
-	if(code2) prompt_code |= (1<<n2)-1;
-	if(code3) early_code  |= (1<<n2)-1;
+        mask = (1<<n2)-1;
+	if(code1) late_code   |= mask;
+	if(code2) prompt_code |= mask;
+	if(code3) early_code  |= mask;
   }
 
   early_end_of_repeat  = 0;
@@ -528,8 +565,10 @@ void channel_update(uint_32 data) {
      fast_IF_nco_mask(c->nco_if, c->step_if, &s_intermediate_freq, &c_intermediate_freq);
      c->nco_if   += c->step_if   * 32;
 
-     /* Generate the gold codes for this set of samples
-        and advance the NCO     */ 
+     /****************************************
+     * Generate the gold codes for this set of
+     * samples and advance the NCO   
+     ****************************************/ 
      fast_code_nco(gold_codes[c->sv_id], c->nco_code, c->step_code);
      new_nco_code = c->nco_code + c->step_code*32;
      if(new_nco_code < c->nco_code)

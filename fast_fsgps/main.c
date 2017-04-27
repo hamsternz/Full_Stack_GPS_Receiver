@@ -10,7 +10,6 @@ typedef char          int_8;
 #include "nav.h"
 #include "channel.h"
 
-struct Channel channel;
 /************************************************
 *
 ************************************************/
@@ -151,7 +150,7 @@ int main(int argc, char *argv[]) {
          printf("%02i, %7i,  %10i, %8.3f\n", 
              channel_get_sv_id(c),
              nav_week_num(sv),
-             nav_frame_of_week(sv),
+             nav_subframe_of_week(sv),
              nav_ms_of_frame(sv) + channel_get_nco_phase(c)/(channel_get_nco_limit()+1.0));
        }
        printf("\n");
