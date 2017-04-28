@@ -75,9 +75,9 @@ struct Nav_orbit {
   uint_8  fit_flag;
   uint_8  orbit_valid;
   uint_32 iode; 
-  uint_32 time_of_ephemeris;   // Toe
+  uint_32 time_of_ephemeris; 
   uint_32 aodo;
-  double  mean_motion_at_ephemeris;    // M0
+  double  mean_motion_at_ephemeris; 
   double  sqrt_A;
   double  Cus;
   double  Cuc;
@@ -90,7 +90,7 @@ struct Nav_orbit {
   double  omega_0;
   double  idot;
   double  omega_dot;
-  double  inclination_at_ephemeris;    // i_0
+  double  inclination_at_ephemeris;
   double  w;
 
 };
@@ -418,6 +418,7 @@ static void nav_save_frame(struct Nav_data *nd) {
   nd->subframe_of_week             = (handover_word >> 13) & 0x1FFFF; 
   nd->ms_of_frame = 0;
 
+  {
   char buf[100];
   time_t timestamp;
   struct tm  ts;
@@ -425,11 +426,11 @@ static void nav_save_frame(struct Nav_data *nd) {
   timestamp = TIME_EPOCH + nd->nav_time.week_num * 604800 + nd->raw_navdata.subframe_of_week * 6;
   ts = *localtime(&timestamp);
   strftime(buf, sizeof(buf), "%a %Y-%m-%d %H:%M:%S %Z", &ts);
-
   
   printf("Time of next frame %i %s :",nd->raw_navdata.subframe_of_week, buf);
   /* Handover word also includes the subframe type */
   frame_type = (handover_word >>  8) & 0x7;
+  }
 
   /* Now Save the required frames for later */
   printf("Frame type is %i: ",frame_type);

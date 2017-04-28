@@ -7,9 +7,11 @@ typedef unsigned char uint_8;
 typedef unsigned int  uint_32;
 typedef int           int_32;
 typedef char          int_8;
-#include "nav.h"
 #include "channel.h"
+#include "nav.h"
+#include "solve.h"
 
+#define MAX_POS 10
 /************************************************
 *
 ************************************************/
@@ -45,6 +47,7 @@ int main(int argc, char *argv[]) {
    nav_startup();
    channel_startup(nav_add_bit);
 
+#if 0
    /* Set the start values */
 ////////////////////////////////////////////////
 //  4: Lower band    1360 upper band    1374 Adjust    5   Freq guess 3495
@@ -70,7 +73,7 @@ int main(int argc, char *argv[]) {
    nco_code  = ((7252)<<18);
    code_tune = 2771;
    channel_add(sv_id, step_if, nco_code, code_tune);
-
+#endif
 ////////////////////////////////////////////////
 // 22: Lower band     409 upper band     623 Adjust  171   Freq guess 1329
 // 
@@ -96,7 +99,7 @@ int main(int argc, char *argv[]) {
    nco_code  = ((8153)<<18);
    code_tune = -2924;
    channel_add(sv_id, step_if, nco_code, code_tune);
-
+#if 0
 ////////////////////////////////////////////////
 // 26: Lower band     679 upper band     657 Adjust   16   Freq guess 3984
 // 
@@ -109,7 +112,7 @@ int main(int argc, char *argv[]) {
    nco_code  = ((382)<<18);
    code_tune = 10880;
    channel_add(sv_id, step_if, nco_code, code_tune);
-
+#endif
 ////////////////////////////////////////////////
 // 31: Lower band     384 upper band    1599 Adjust  379   Freq guess 121
 // 
@@ -122,7 +125,6 @@ int main(int argc, char *argv[]) {
    nco_code  = ((6145)<<18);
    code_tune = 329;
    channel_add(sv_id, step_if, nco_code, code_tune);
-
 ////////////////////////////////////////////////
 // 32: Lower band     491 upper band     513 Adjust   21   Freq guess -1521
 // 
@@ -141,8 +143,13 @@ int main(int argc, char *argv[]) {
      int ch;
      static int processed = 0;
      if(processed % ((16368000/32)/20) == 0) {
-       int c;
+       int c, pos_sv[MAX_POS];
+       double lat,lon,alt;
+       double pos_x[MAX_POS], pos_y[MAX_POS], pos_z[MAX_POS], pos_t[MAX_POS];
+       int pos_used = 0;
+       double sol_x=0.0, sol_y=0.0, sol_z=0.0, sol_t=0.0;
        printf("Update at %8.3f\n", processed/(double)(16368000/32));
+       printf("Channel status:\n");
        printf("SV, WeekNum, FrameOfWeek, msOfFrame\n");
        for(c = 0; c < channel_get_count(); c++) {
          int sv;
@@ -152,6 +159,39 @@ int main(int argc, char *argv[]) {
              nav_week_num(sv),
              nav_subframe_of_week(sv),
              nav_ms_of_frame(sv) + channel_get_nco_phase(c)/(channel_get_nco_limit()+1.0));
+       }
+       printf("\n");
+
+       printf("Space Vehicle Positions:\n");
+       printf("sv,          x,          y,          z,          t\n"); 
+       for(c = 0; c < channel_get_count() && pos_used < MAX_POS; c++) {
+         double raw_time;
+         int sv;
+         sv = channel_get_sv_id(c);
+         raw_time = nav_ms_of_frame(sv) + channel_get_nco_phase(c)/(channel_get_nco_limit()+1.0);
+         raw_time += nav_subframe_of_week(sv)*6000.0;
+         raw_time /= 1000;
+         if(!nav_calc_corrected_time(sv,raw_time, pos_t+pos_used))
+           continue;
+         if(!nav_calc_position(sv,pos_t[pos_used], pos_x+pos_used, pos_y+pos_used, pos_z+pos_used))
+           continue;
+         pos_sv[pos_used] = sv;
+         pos_used++;
+       }
+
+       for(c = 0; c < pos_used; c++) {
+         printf("%2i, %12.2f, %12.2f, %12.2f, %11.5f\n",pos_sv[c], pos_x[c], pos_y[c], pos_z[c], pos_t[c]);
+       }
+
+       if(pos_used > 3) { 
+         printf("\n");
+         solve_location(pos_used, pos_x, pos_y, pos_z, pos_t,
+                                &sol_x,&sol_y,&sol_y,&sol_t);
+         solve_LatLonAlt(sol_x, sol_y, sol_z, &lat, &lon, &alt);
+
+         printf("Solution:\n");
+         printf(" %12.2f, %12.2f, %12.2f, %11.5f\n", sol_x, sol_y, sol_z, sol_t);
+         printf(" %12.5f, %12.5f, %12.2f\n", lat,lon,alt);
        }
        printf("\n");
        printf("\n");
