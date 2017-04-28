@@ -427,16 +427,18 @@ static void nav_save_frame(struct Nav_data *nd) {
   ts = *localtime(&timestamp);
   strftime(buf, sizeof(buf), "%a %Y-%m-%d %H:%M:%S %Z", &ts);
   
-  printf("Time of next frame %i %s :",nd->raw_navdata.subframe_of_week, buf);
+  printf("Time of next frame %i %s\n",nd->raw_navdata.subframe_of_week, buf);
   /* Handover word also includes the subframe type */
   frame_type = (handover_word >>  8) & 0x7;
   }
 
+#if 0
   /* Now Save the required frames for later */
   printf("Frame type is %i: ",frame_type);
   for(i=0; i < 10; i++)
     printf(" %08X", unflipped[i]);
   printf("\n");
+#endif
 
   if(frame_type > 0 && frame_type < 6) {
       if(nd->nav_file == NULL) {

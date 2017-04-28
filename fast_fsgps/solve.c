@@ -23,7 +23,6 @@
 // http://www.aholme.co.uk/GPS/Main.htm
 //////////////////////////////////////////////////////////////////////////
 
-#include <stdio.h>
 #include <math.h>
 #include <memory.h>
 #include "solve.h"
@@ -51,14 +50,14 @@ int solve_location(int chans,
     double x_sv[NUM_CHANS],
            y_sv[NUM_CHANS],
            z_sv[NUM_CHANS];
-  
+
     double t_pc;  // Uncorrected system time when clock replica snapshots taken
     double t_rx;    // Corrected GPS time
 
     double dPR[NUM_CHANS]; // Pseudo range error
 
     double jac[NUM_CHANS][4], ma[4][4], mb[4][4], mc[4][NUM_CHANS], md[4];
-    double err_mag;
+
     double weight[NUM_CHANS];
 
     *sol_x = *sol_y = *sol_z = *sol_t = t_pc = 0.0;
@@ -70,14 +69,14 @@ int solve_location(int chans,
         z_sv[i]   = z[i];
         t_tx[i]   = t[i];
         t_pc     += t[i];
-        printf("%12.2f, %12.2f, %12.2f, %12.2f\n",x[i],y[i],z[i],t[i]);
     }
+
     // Approximate starting value for receiver clock
     t_pc = t_pc/chans + 75e-3;
 
     // Iterate to user xyzt solution using Taylor Series expansion:
+  double err_mag;
     for(j=0; j<MAX_ITER; j++) {
-        double determinant, dx,dy,dz,dt;
         t_rx = t_pc - *sol_t;
         for (i=0; i<chans; i++) {
             // Convert SV position to ECI coords (20.3.3.4.3.3.2)
@@ -107,7 +106,7 @@ int solve_location(int chans,
             for (i=0; i<chans; i++) ma[r][c] += jac[i][r]*weight[i]*jac[i][c];
         }
 
-        determinant =
+        double determinant =
             ma[0][3]*ma[1][2]*ma[2][1]*ma[3][0] - ma[0][2]*ma[1][3]*ma[2][1]*ma[3][0] - ma[0][3]*ma[1][1]*ma[2][2]*ma[3][0] + ma[0][1]*ma[1][3]*ma[2][2]*ma[3][0]+
             ma[0][2]*ma[1][1]*ma[2][3]*ma[3][0] - ma[0][1]*ma[1][2]*ma[2][3]*ma[3][0] - ma[0][3]*ma[1][2]*ma[2][0]*ma[3][1] + ma[0][2]*ma[1][3]*ma[2][0]*ma[3][1]+
             ma[0][3]*ma[1][0]*ma[2][2]*ma[3][1] - ma[0][0]*ma[1][3]*ma[2][2]*ma[3][1] - ma[0][2]*ma[1][0]*ma[2][3]*ma[3][1] + ma[0][0]*ma[1][2]*ma[2][3]*ma[3][1]+
@@ -146,10 +145,10 @@ int solve_location(int chans,
             for (i=0; i<chans; i++) md[r] += mc[r][i]*weight[i]*dPR[i];
         }
 
-        dx = md[0];
-        dy = md[1];
-        dz = md[2];
-        dt = md[3];
+        double dx = md[0];
+        double dy = md[1];
+        double dz = md[2];
+        double dt = md[3];
 
         err_mag = sqrt(dx*dx + dy*dy + dz*dz);
 
@@ -175,10 +174,10 @@ void solve_LatLonAlt(
 
     const double p = sqrt(x_n*x_n + y_n*y_n);
 
+
     *lon = 2.0 * atan2(y_n, x_n + p);
     *lat = atan(z_n / (p * (1.0 - e2)));
     *alt = 0.0;
-
     while(iterations > 0) {
         double tmp = *alt;
         double N = a / sqrt(1.0 - e2*pow(sin(*lat),2));
@@ -187,7 +186,7 @@ void solve_LatLonAlt(
         if(fabs(*alt-tmp)<1e-3) 
             break;
         iterations--;
-    }
+    } 
 }
 
 /*********************************************************************************************************/
