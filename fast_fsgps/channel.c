@@ -529,6 +529,17 @@ uint_32 channel_get_sv_id(int handle) {
 /************************************************
 *
 ************************************************/
+int channel_get_power(int handle, uint_32 *early_power, uint_32 *prompt_power, uint_32 *late_power) {
+  if(handle < 0 || handle >= channels_used)
+    return -1;
+  *early_power  = channels[handle].early_power_filtered_not_reset;
+  *prompt_power = channels[handle].prompt_power_filtered_not_reset;
+  *late_power   = channels[handle].late_power_filtered_not_reset;
+  return 1;
+}
+/************************************************
+*
+************************************************/
 uint_32 channel_get_nco_phase(int handle) {
   if(handle < 0 || handle >= channels_used)
     return -1;

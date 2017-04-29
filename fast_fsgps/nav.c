@@ -113,6 +113,9 @@ struct Nav_data {
 int nav_subframe_of_week(int sv) {
   if(sv < 0 || sv > MAX_SV)
     return -1;
+  if(!nav_data[sv].nav_time.time_good)
+    return -1;
+
   return nav_data[sv].subframe_of_week;
 }
 
@@ -121,6 +124,8 @@ int nav_subframe_of_week(int sv) {
 *************************************************/
 int nav_week_num(int sv) {
   if(sv < 0 || sv > MAX_SV)
+    return -1;
+  if(!nav_data[sv].nav_time.time_good)
     return -1;
   return nav_data[sv].nav_time.week_num;
 }
@@ -182,7 +187,11 @@ int nav_calc_corrected_time(int sv_id, double raw_t, double *t) {
   double delta_t, delta_tr, ek, time_correction;
   struct Nav_data *nd;
   if(sv_id < 0 || sv_id > MAX_SV)
+    return 0;
+
+  if(!nav_data[sv_id].nav_time.time_good)
     return -1;
+
   nd = nav_data+sv_id;
 
   /* Calulate the time for the adjustment */
@@ -218,8 +227,11 @@ int nav_calc_position(int sv_id, double t, double *x, double *y, double *z)
   double corrected_inclination, corrected_angle_of_ascending_node;
   struct Nav_data *nd;
   if(sv_id < 0 || sv_id > MAX_SV)
-    return -1;
+    return 0;
   nd = nav_data+sv_id;
+  if(!nd->nav_orbit.orbit_valid)
+    return 0;
+    
   
   /***********************
   * Calculate orbit
@@ -426,8 +438,10 @@ static void nav_save_frame(struct Nav_data *nd) {
   timestamp = TIME_EPOCH + nd->nav_time.week_num * 604800 + nd->raw_navdata.subframe_of_week * 6;
   ts = *localtime(&timestamp);
   strftime(buf, sizeof(buf), "%a %Y-%m-%d %H:%M:%S %Z", &ts);
-  
+
+#if 0  
   printf("Time of next frame %i %s\n",nd->raw_navdata.subframe_of_week, buf);
+#endif
   /* Handover word also includes the subframe type */
   frame_type = (handover_word >>  8) & 0x7;
   }

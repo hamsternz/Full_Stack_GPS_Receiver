@@ -143,7 +143,7 @@ int main(int argc, char *argv[]) {
      uint_32 data;
      int ch;
      static int processed = 0;
-     if(processed % ((16368000/32)) == 0) {
+     if(processed % ((16368000/32)/10) == 0) {
        int c, pos_sv[MAX_POS];
        double lat,lon,alt;
        double pos_x[MAX_POS], pos_y[MAX_POS], pos_z[MAX_POS], pos_t[MAX_POS];
@@ -151,15 +151,19 @@ int main(int argc, char *argv[]) {
        double sol_x=0.0, sol_y=0.0, sol_z=0.0, sol_t=0.0;
        printf("Update at %8.3f\n", processed/(double)(16368000/32));
        printf("Channel status:\n");
-       printf("SV, WeekNum, FrameOfWeek, msOfFrame\n");
+       printf("SV, WeekNum, FrameOfWeek,     msOfFrame,  earlyPwr, promptPwr,   latePwr\n");
        for(c = 0; c < channel_get_count(); c++) {
          int sv;
+         uint_32 early_power, prompt_power, late_power;
          sv = channel_get_sv_id(c);
-         printf("%02i, %7i,  %10i, %8.3f\n", 
+         channel_get_power(c, &early_power, &prompt_power, &late_power);
+
+         printf("%02i, %7i,  %10i,  %12.7f, %9u, %9u, %9u\n", 
              channel_get_sv_id(c),
              nav_week_num(sv),
              nav_subframe_of_week(sv),
-             nav_ms_of_frame(sv) + channel_get_nco_phase(c)/(channel_get_nco_limit()+1.0));
+             nav_ms_of_frame(sv) + channel_get_nco_phase(c)/(channel_get_nco_limit()+1.0),
+             early_power,prompt_power,late_power);
        }
        printf("\n");
 
@@ -179,7 +183,7 @@ int main(int argc, char *argv[]) {
        }
 
        printf("Space Vehicle Positions:\n");
-       printf("sv,          x,          y,          z,          t\n"); 
+       printf("sv,            x,            y,            z,            t\n"); 
        for(c = 0; c < pos_used; c++) {
          printf("%2i, %12.2f, %12.2f, %12.2f, %12.8f\n",pos_sv[c], pos_x[c], pos_y[c], pos_z[c], pos_t[c]);
        }
@@ -195,6 +199,7 @@ int main(int argc, char *argv[]) {
        }
        printf("\n");
        printf("\n");
+//       usleep(100000);
      }
      processed++;
 
