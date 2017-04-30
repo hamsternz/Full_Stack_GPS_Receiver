@@ -48,7 +48,7 @@ struct Raw_navdata {
 
   /* Complete NAV data frames (only 1 to 5 is used, zero is empty) */
   uint_8  valid_subframe[6];
-  uint_32 subframes[7][10];  
+  uint_32 subframes[6][10];  
 };
 
 /*************************************************
@@ -128,6 +128,22 @@ int nav_week_num(int sv) {
   if(!nav_data[sv].nav_time.time_good)
     return -1;
   return nav_data[sv].nav_time.week_num;
+}
+
+/*************************************************
+*                                             
+*************************************************/
+int nav_known_frames(int sv) {
+  int rtn;
+  if(sv < 0 || sv > MAX_SV)
+    return -1;
+  rtn = 0;
+  if(nav_data[sv].raw_navdata.valid_subframe[1]) rtn |= 0x01;
+  if(nav_data[sv].raw_navdata.valid_subframe[2]) rtn |= 0x02;
+  if(nav_data[sv].raw_navdata.valid_subframe[3]) rtn |= 0x04;
+  if(nav_data[sv].raw_navdata.valid_subframe[4]) rtn |= 0x08;
+  if(nav_data[sv].raw_navdata.valid_subframe[5]) rtn |= 0x10;
+  return rtn;
 }
 
 /*************************************************
@@ -510,7 +526,7 @@ static void nav_save_frame(struct Nav_data *nd) {
     }
 
     /**************************************************
-    * First, check that bith frames have the same Issue
+    * First, check that both frames have the same Issue
     * Of Data Ephemeris values, i.e. they are havles of
     * the same data set, and that we have not already 
     * extracted the orbit parameters
@@ -601,13 +617,13 @@ static void nav_read_in_all_cached_data(void) {
 * of the previous frame, indicating if the following subframe is flipped)
 ******************************************************************************/
 static int nav_test_telemetry(struct Nav_data *nd) {
-    /* TOD - mask should be 0x7FC00000A, and the first test should be against 0x5D000000 */
+    /* TODO - mask should be 0x7FC00000A, and the first test should be against 0x5D000000 */
     
-    unsigned int temp = nd->raw_navdata.new_word & 0x3FC00000;
+    unsigned int temp = nd->raw_navdata.new_word & 0x7FC00000;
 
     /* Test the first 8 bits for for the preamble, bur also check the 
     * last bit of the previous frame to see if this one is inverted  */
-    if(temp == 0x1D000000)
+    if(temp == 0x5D000000)
         return 1;
     if(temp == 0x22C00000)
         return 1;

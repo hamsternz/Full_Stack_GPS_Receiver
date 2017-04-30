@@ -143,7 +143,7 @@ int main(int argc, char *argv[]) {
      uint_32 data;
      int ch;
      static int processed = 0;
-     if(processed % ((16368000/32)/10) == 0) {
+     if(processed % ((16368000/32)*2) == 0) {
        int c, pos_sv[MAX_POS];
        double lat,lon,alt;
        double pos_x[MAX_POS], pos_y[MAX_POS], pos_z[MAX_POS], pos_t[MAX_POS];
@@ -153,17 +153,23 @@ int main(int argc, char *argv[]) {
        printf("Channel status:\n");
        printf("SV, WeekNum, FrameOfWeek,     msOfFrame,  earlyPwr, promptPwr,   latePwr\n");
        for(c = 0; c < channel_get_count(); c++) {
-         int sv;
+         int sv,frames;
          uint_32 early_power, prompt_power, late_power;
          sv = channel_get_sv_id(c);
          channel_get_power(c, &early_power, &prompt_power, &late_power);
-
-         printf("%02i, %7i,  %10i,  %12.7f, %9u, %9u, %9u\n", 
+         frames = nav_known_frames(sv); 
+         printf("%02i, %7i,  %10i,  %12.7f, %9u, %9u, %9u,  %c%c%c%c%c\n", 
              channel_get_sv_id(c),
              nav_week_num(sv),
              nav_subframe_of_week(sv),
              nav_ms_of_frame(sv) + channel_get_nco_phase(c)/(channel_get_nco_limit()+1.0),
-             early_power,prompt_power,late_power);
+             early_power,prompt_power,late_power,
+             frames & 0x01 ? '1' : '-',
+             frames & 0x02 ? '2' : '-',
+             frames & 0x04 ? '3' : '-',
+             frames & 0x08 ? '4' : '-',
+             frames & 0x10 ? '5' : '-'
+         );
        }
        printf("\n");
 

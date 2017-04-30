@@ -40,6 +40,7 @@ struct Channel {
    uint_8 no_adjust;
    uint_8 channel_allocated;
    uint_8 sv_id;
+   uint_8 disable_track;
 };
 
 /* Filter factors */
@@ -60,7 +61,8 @@ int channels_used = 0;
 
 #define MIN_SV_ID 1
 #define MAX_SV_ID 32
-uint_8 gold_codes[MAX_SV_ID+1][1023];
+/* Note - we duplicate bits 0,1,2 at 1023,1024,1025 to speed things up */
+uint_8 gold_codes[MAX_SV_ID+1][1027];
 
 struct Space_vehicle {
    uint_8 sv_id;
@@ -172,6 +174,10 @@ void generate_gold_codes(void) {
   for(sv = 0; sv < sizeof(space_vehicles)/sizeof(struct Space_vehicle); sv++) {
     g2_lfsr(space_vehicles[sv].tap1, space_vehicles[sv].tap2, g2);
     combine_g1_and_g2(g1, g2, gold_codes[ space_vehicles[sv].sv_id]);
+    /* This avoids needing to wrap in the most timing senstive code */
+    gold_codes[ space_vehicles[sv].sv_id][1023] = gold_codes[ space_vehicles[sv].sv_id][0];
+    gold_codes[ space_vehicles[sv].sv_id][1024] = gold_codes[ space_vehicles[sv].sv_id][1];
+    gold_codes[ space_vehicles[sv].sv_id][1025] = gold_codes[ space_vehicles[sv].sv_id][2];
   }
 }
 
@@ -209,73 +215,76 @@ void generate_atan2_table(void) {
 /************************************************
 * A quick way to calculat the number of set bits
 ************************************************/
+static unsigned char ones_lookup[256];
+void setup_count_ones(void) {
+  int i;
+  for(i = 0; i < 256; i++) {
+    int j;
+    for(j = 0; j < 32; j++) {
+      if(i&(1<<j))
+        ones_lookup[i]++;
+    }
+  } 
+}
+#if 0
+#define count_ones(a) __builtin_popcountl(a)
+#else
 int count_ones(uint_32 a) {
   int rtn;
-  static int setup = 1; 
-  static unsigned char ones_lookup[256];
-  if(setup) {
-    int i;
-    for(i = 0; i < 256; i++) {
-      int j;
-      for(j = 0; j < 32; j++) {
-        if(i&(1<<j))
-          ones_lookup[i]++;
-      }
-    } 
-    setup = 0;
-  }
-  rtn  = ones_lookup[(a)     & 0xFF];
-  rtn += ones_lookup[(a>>8)  & 0xFF];
+
+  rtn  = ones_lookup[ a      & 0xFF];
+  rtn += ones_lookup[(a>> 8) & 0xFF];
   rtn += ones_lookup[(a>>16) & 0xFF];
   rtn += ones_lookup[(a>>24) & 0xFF];
   return rtn;
 }
-
+#endif
 
 /************************************************
 * The NCO that generates the Gold code bistream
 ************************************************/
 void fast_code_nco(uint_8 *gc, uint_32 nco, uint_32 step) {
   int i,n0,n1,n2;
-  int wrap0=0, wrap1=0, wrap2=0, wrap3=0;
+  int wrap0, wrap1, wrap2, wrap3;
   uint_8 codeSub1, code0, code1, code2, code3;
   uint_32 mask;
-  n0 = 1;
+
   i = nco>>22;
 
-  if(i == 0) {
-    codeSub1 = gc[1022];
-    wrap0    = 1;
-  } else
-    codeSub1 = gc[i - 1];
+  wrap0 = (i ==    0) ? 1 : 0;
+  wrap1 = (i == 1022) ? 1 : 0;
+  wrap2 = (i == 1021) ? 1 : 0;
+  wrap3 = (i == 1020) ? 1 : 0;
 
-
-  code0 = gc[i];
-  i++;
-  if(i > 1022) { i-=1023; wrap1 = 1; }
-  code1 = gc[i];
-  i++;
-  if(i > 1022) { i-=1023; wrap2 = 1; }
-  code2 = gc[i];
-  i++;
-  if(i > 1022) { i-=1023; wrap3 = 1; }
-  code3 = gc[i];
-  
+  codeSub1 = gc[(i==0) ? 1022 : i-1];
+  code0 = gc[i+0];
+  code1 = gc[i+1];
+  code2 = gc[i+2];
+  code3 = gc[i+3];
   
   /* Work out how many bits of each code chip */
   n0 = n1 = n2 = 0;  
   
   nco &= ((1<<22)-1);
+#if 0
   while(nco < (1<<22)) {
     nco += step;
     n0++;
   }
-
   while((nco < (2<<22)) && n0+n1 < 32) {
     nco += step;
     n1++;
   }
   n2 = 32 - (n0 + n1);
+#else
+  n0 = ((1<<22)+step-1-nco) / step;
+  n1 = ((2<<22)+step-1-nco) / step - n0;
+  if(n0+n1 > 32)
+    n1 = 32 - n0;
+  n2 = 32-n1-n0;
+  nco += step * 32;
+#endif
+
 
   late_code = prompt_code = early_code = 0;
 
@@ -400,6 +409,9 @@ void fast_IF_nco_mask_8(uint_32 nco, uint_32 step, uint_32 *s, uint_32 *c) {
   }
 }
 
+/************************************************
+*
+************************************************/
 void fast_IF_nco_mask_16(uint_32 nco, uint_32 step, uint_32 *s, uint_32 *c) {
   uint_32 nco_in_16;
   nco_in_16 = nco + step*16;
@@ -426,6 +438,9 @@ void fast_IF_nco_mask_16(uint_32 nco, uint_32 step, uint_32 *s, uint_32 *c) {
   fast_IF_nco_mask_8(nco, step, s, c);
 }
 
+/************************************************
+*
+************************************************/
 void fast_IF_nco_mask(uint_32 nco, uint_32 step, uint_32 *s, uint_32 *c) {
   uint_32 nco_in_32;
   nco_in_32 = nco+step*32;
@@ -521,6 +536,24 @@ int channel_get_count(void) {
 /************************************************
 *
 ************************************************/
+int channel_enable_track(int handle) {
+  if(handle < 0 || handle >= channels_used)
+    return -1;
+  channels[handle].disable_track = 0;
+  return 1;
+}
+/************************************************
+*
+************************************************/
+int channel_disable_track(int handle) {
+  if(handle < 0 || handle >= channels_used)
+    return -1;
+  channels[handle].disable_track = 1;
+  return 1;
+}
+/************************************************
+*
+************************************************/
 uint_32 channel_get_sv_id(int handle) {
   if(handle < 0 || handle >= channels_used)
     return -1;
@@ -533,7 +566,7 @@ int channel_get_power(int handle, uint_32 *early_power, uint_32 *prompt_power, u
   if(handle < 0 || handle >= channels_used)
     return -1;
   *early_power  = channels[handle].early_power_filtered_not_reset;
-  *prompt_power = channels[handle].prompt_power_filtered_not_reset;
+  *prompt_power = channels[handle].prompt_power_filtered;
   *late_power   = channels[handle].late_power_filtered_not_reset;
   return 1;
 }
@@ -558,6 +591,7 @@ void channel_startup(void (*callback)(int sv_id, int phase)) {
    phase_callback = callback; 
    generate_atan2_table();
    generate_gold_codes();
+   setup_count_ones();
    channels_used = 0;
 }
 
@@ -645,7 +679,7 @@ void channel_update(uint_32 data) {
 #if SHOW_CHANNEL_POWER
          printf(" %7i, ", c->prompt_power_filtered);
 #endif
-         adjust_prompt(c);
+           adjust_prompt(c);
          c->prompt_sc_temp = c->prompt_sine_count;
          c->prompt_cc_temp = c->prompt_cosine_count;
          c->prompt_sine_count   = next_sine;
@@ -688,19 +722,21 @@ void channel_update(uint_32 data) {
          /* Trim the NCO for the Gold Code */
          /* Use the relative power levels of the late and early codes
          * to adjust the code NCO phasing */
-         adjust =  c->code_tune;
-         if(c->early_power_filtered/5 > c->late_power_filtered/4) {
-           c->early_power_filtered = (c->early_power_filtered*7+c->late_power_filtered)/8;
-           adjust += 16368*1;
-           c->code_tune+=2;
-         } else if(c->late_power_filtered/5 > c->early_power_filtered/4) {
-           c->late_power_filtered = (c->late_power_filtered*7+c->early_power_filtered)/8;
-           adjust  -= 16368*1;
-           c->code_tune-=2;
+         if(!c->disable_track) {
+           adjust =  c->code_tune;
+           if(c->early_power_filtered/5 > c->late_power_filtered/4) {
+             c->early_power_filtered = (c->early_power_filtered*7+c->late_power_filtered)/8;
+             adjust += 16368*1;
+             c->code_tune+=2;
+           } else if(c->late_power_filtered/5 > c->early_power_filtered/4) {
+             c->late_power_filtered = (c->late_power_filtered*7+c->early_power_filtered)/8;
+             adjust  -= 16368*1;
+             c->code_tune-=2;
+           }
+           c->nco_code += adjust;
+  
+           c->no_adjust = 1;
          }
-         c->nco_code += adjust;
-
-         c->no_adjust = 1;
       }
       c->no_adjust = 0;
       c++;
