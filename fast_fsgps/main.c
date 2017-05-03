@@ -201,7 +201,7 @@ int main(int argc, char *argv[]) {
                                  &sol_x,&sol_y,&sol_z,&sol_t);
          solve_LatLonAlt(sol_x, sol_y, sol_z, &lat, &lon, &alt);
 
-         printf("SOlution ECEF: %12.2f, %12.2f, %12.2f, %11.5f\n", sol_x, sol_y, sol_z, sol_t);
+         printf("Solution ECEF: %12.2f, %12.2f, %12.2f, %11.5f\n", sol_x, sol_y, sol_z, sol_t);
          printf("Solution LLA:  %12.5f, %12.5f, %12.2f\n", lat*180/PI, lon*180/PI, alt);
        }
        printf("\n");
