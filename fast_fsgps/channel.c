@@ -9,6 +9,7 @@ typedef int           int_32;
 typedef char          int_8;
 #include "channel.h"
 
+#define SHOW_CHANNEL_POWER 0
 struct Channel {
    uint_32 nco_if;
    uint_32 step_if;
@@ -50,19 +51,19 @@ struct Channel {
 
 /* For Debug */
 #define LOCK_SHOW_ANGLES 0
-#define SHOW_CHANNEL_POWER 0
 
 #define ATAN2_SIZE 128
-uint_8 atan2_lookup[ATAN2_SIZE][ATAN2_SIZE];
+static uint_8 atan2_lookup[ATAN2_SIZE][ATAN2_SIZE];
 
 #define MAX_CHANNELS 8
-struct Channel channels[MAX_CHANNELS];
-int channels_used = 0;
+static struct Channel channels[MAX_CHANNELS];
+static int channels_used = 0;
 
 #define MIN_SV_ID 1
 #define MAX_SV_ID 32
 /* Note - we duplicate bits 0,1,2 at 1023,1024,1025 to speed things up */
-uint_8 gold_codes[MAX_SV_ID+1][1027];
+static uint_32 gold_codes_epl[MAX_SV_ID+1][1023*16];
+static uint_8 gold_codes[MAX_SV_ID+1][1023];
 
 struct Space_vehicle {
    uint_8 sv_id;
@@ -101,6 +102,41 @@ struct Space_vehicle {
   {30,  2, 7},
   {31,  3, 8},
   {32,  4, 9}
+};
+
+static uint_32 masks[32] = {
+   0x00000000,
+   0x00000001,
+   0x00000003,
+   0x00000007,
+   0x0000000F,
+   0x0000001F,
+   0x0000003F,
+   0x0000007F,
+   0x000000FF,
+   0x000001FF,
+   0x000003FF,
+   0x000007FF,
+   0x00000FFF,
+   0x00001FFF,
+   0x00003FFF,
+   0x00007FFF,
+   0x0000FFFF,
+   0x0001FFFF,
+   0x0003FFFF,
+   0x0007FFFF,
+   0x000FFFFF,
+   0x001FFFFF,
+   0x003FFFFF,
+   0x007FFFFF,
+   0x00FFFFFF,
+   0x01FFFFFF,
+   0x03FFFFFF,
+   0x07FFFFFF,
+   0x0FFFFFFF,
+   0x1FFFFFFF,
+   0x3FFFFFFF,
+   0x7FFFFFFF
 };
 
 void (*phase_callback)(int sv_id, int phase);
@@ -166,7 +202,7 @@ static void combine_g1_and_g2(unsigned char *g1, unsigned char *g2, unsigned cha
 /*********************************************************************
 * Build the Gold codes for each Satellite from the G1 and G2 streams
 *********************************************************************/
-void generate_gold_codes(void) {
+static void generate_gold_codes(void) {
   int sv;
   static unsigned char g1[1023];
   static unsigned char g2[1023];
@@ -174,17 +210,33 @@ void generate_gold_codes(void) {
   for(sv = 0; sv < sizeof(space_vehicles)/sizeof(struct Space_vehicle); sv++) {
     g2_lfsr(space_vehicles[sv].tap1, space_vehicles[sv].tap2, g2);
     combine_g1_and_g2(g1, g2, gold_codes[ space_vehicles[sv].sv_id]);
-    /* This avoids needing to wrap in the most timing senstive code */
-    gold_codes[ space_vehicles[sv].sv_id][1023] = gold_codes[ space_vehicles[sv].sv_id][0];
-    gold_codes[ space_vehicles[sv].sv_id][1024] = gold_codes[ space_vehicles[sv].sv_id][1];
-    gold_codes[ space_vehicles[sv].sv_id][1025] = gold_codes[ space_vehicles[sv].sv_id][2];
+  }
+}
+
+/*********************************************************************
+* Build the Gold code early/prompt/late table
+*********************************************************************/
+static void generate_gold_codes_epl(void) {
+  int sv;
+  for(sv = 1; sv <= MAX_SV_ID; sv++) {
+    int i;
+    for(i = 0; i < 1023*16; i++) {
+      int j;
+      uint_32 t = 0;
+      for(j = 0; j < 32; j++) { 
+        t = t << 1;
+        if(gold_codes[sv][((i+j)>>4)%1023])
+          t |= 1;
+      }
+      gold_codes_epl[sv][i] = t;
+    }
   }
 }
 
 /*********************************************************************
 * Generate the atan2 table
 *********************************************************************/
-void generate_atan2_table(void) {
+static void generate_atan2_table(void) {
     int x,y;
     for(x = 0; x < ATAN2_SIZE; x++) {
         for(y = 0; y < ATAN2_SIZE; y++) {
@@ -229,7 +281,7 @@ void setup_count_ones(void) {
 #if 0
 #define count_ones(a) __builtin_popcountl(a)
 #else
-int count_ones(uint_32 a) {
+static int count_ones(uint_32 a) {
   int rtn;
 
   rtn  = ones_lookup[ a      & 0xFF];
@@ -243,131 +295,48 @@ int count_ones(uint_32 a) {
 /************************************************
 * The NCO that generates the Gold code bistream
 ************************************************/
-void fast_code_nco(uint_8 *gc, uint_32 nco, uint_32 step) {
-  int i,n0,n1,n2;
-  int wrap0, wrap1, wrap2, wrap3;
-  uint_8 codeSub1, code0, code1, code2, code3;
-  uint_32 mask;
+void fast_code_nco(uint_32 *gc_epl, uint_32 nco, uint_32 step) {
+  uint_32 phaseE, phaseP, phaseL;
 
-  i = nco>>22;
+  phaseP = nco>>18;
+  if(phaseP < 16)
+    phaseL = phaseP - 16+16368;
+  else
+    phaseL = phaseP -16;
+  if(phaseP >= 16*1022)
+    phaseE = phaseP + 16-16368;
+  else
+    phaseE = phaseP +16;
 
-  wrap0 = (i ==    0) ? 1 : 0;
-  wrap1 = (i == 1022) ? 1 : 0;
-  wrap2 = (i == 1021) ? 1 : 0;
-  wrap3 = (i == 1020) ? 1 : 0;
-
-  codeSub1 = gc[(i==0) ? 1022 : i-1];
-  code0 = gc[i+0];
-  code1 = gc[i+1];
-  code2 = gc[i+2];
-  code3 = gc[i+3];
-  
-  /* Work out how many bits of each code chip */
-  n0 = n1 = n2 = 0;  
-  
-  nco &= ((1<<22)-1);
-#if 0
-  while(nco < (1<<22)) {
-    nco += step;
-    n0++;
-  }
-  while((nco < (2<<22)) && n0+n1 < 32) {
-    nco += step;
-    n1++;
-  }
-  n2 = 32 - (n0 + n1);
-#else
-  n0 = ((1<<22)+step-1-nco) / step;
-  n1 = ((2<<22)+step-1-nco) / step - n0;
-  if(n0+n1 > 32)
-    n1 = 32 - n0;
-  n2 = 32-n1-n0;
-  nco += step * 32;
-#endif
-
-
-  late_code = prompt_code = early_code = 0;
-
-  /***************************************************
-  * First code bit in results 
-  ***************************************************/ 
-  if(codeSub1) late_code   = 0xFFFFFFFF;
-  if(code0)    prompt_code = 0xFFFFFFFF;
-  if(code1)    early_code  = 0xFFFFFFFF;
-
-
-  /***************************************************
-  * Second code bit in results 
-  ***************************************************/ 
-  late_code   <<= n1;
-  prompt_code <<= n1;
-  early_code  <<= n1;
-  mask = (1<<n1)-1;
-  if(code0) late_code   |= mask;
-  if(code1) prompt_code |= mask;
-  if(code2) early_code  |= mask;
-
-  /***************************************************
-  * Third (and not always present) code bit in results 
-  ***************************************************/ 
-  if(n2 > 0) {
-	late_code   <<= n2;
-	prompt_code <<= n2;
-	early_code  <<= n2;
-        mask = (1<<n2)-1;
-	if(code1) late_code   |= mask;
-	if(code2) prompt_code |= mask;
-	if(code3) early_code  |= mask;
-  }
-
+  early_code  = gc_epl[phaseE]; 
+  prompt_code = gc_epl[phaseP]; 
+  late_code   = gc_epl[phaseL]; 
+ 
   early_end_of_repeat  = 0;
-  prompt_end_of_repeat = 0;
-  late_end_of_repeat   = 0;
   early_mask  = 0;
+  if(phaseE >= 1023*16-32) {
+    early_end_of_repeat   = 1;
+    early_mask   = masks[phaseE-1021*16];
+  } 
+
+  prompt_end_of_repeat = 0;
   prompt_mask = 0;
+  if(phaseP >= 1023*16-32) {
+    prompt_end_of_repeat   = 1;
+    prompt_mask   = masks[phaseP-1021*16];
+  }
+
+  late_end_of_repeat   = 0;
   late_mask   = 0;
-
-  /****************************************************
-  * Now to generate the masks for when we have wrapped
-  ****************************************************/
-  if(wrap0) {
-	  late_mask = 0xFFFFFFFF;
-	  late_mask >>= n0;
-          late_end_of_repeat = 1;
-  } else if(wrap1 && (nco >= (2<<22))) {
-	  late_mask = 0xFFFFFFFF;
-	  late_mask >>= n0;
-	  late_mask >>= n1;
-          late_end_of_repeat = 1;
-  }
-
-  if(wrap1) {
-	  prompt_mask = 0xFFFFFFFF;
-	  prompt_mask >>= n0;
-          prompt_end_of_repeat = 1;
-  } else if(wrap2 && (nco >= (2<<22))) {
-	  prompt_mask = 0xFFFFFFFF;
-	  prompt_mask >>= n0;
-	  prompt_mask >>= n1;
-          prompt_end_of_repeat = 1;
-  }
-
-  if(wrap2) {
-	  early_mask = 0xFFFFFFFF;
-	  early_mask >>= n0;
-          early_end_of_repeat = 1;
-  } else if(wrap3 && (nco >= (2<<22))) {
-	  early_mask = 0xFFFFFFFF;
-	  early_mask >>= n0;
-	  early_mask >>= n1;
-          early_end_of_repeat = 1;
+  if(phaseL >= 1023*16-32) {
+    late_end_of_repeat   = 1;
+    late_mask   = masks[phaseL-1021*16];
   }
 }
-
 /************************************************
 *
 ************************************************/
-void fast_IF_nco_mask_8(uint_32 nco, uint_32 step, uint_32 *s, uint_32 *c) {
+static void fast_IF_nco_mask_8(uint_32 nco, uint_32 step, uint_32 *s, uint_32 *c) {
   int j;
   uint_32 nco_in_8;
 
@@ -412,7 +381,7 @@ void fast_IF_nco_mask_8(uint_32 nco, uint_32 step, uint_32 *s, uint_32 *c) {
 /************************************************
 *
 ************************************************/
-void fast_IF_nco_mask_16(uint_32 nco, uint_32 step, uint_32 *s, uint_32 *c) {
+static void fast_IF_nco_mask_16(uint_32 nco, uint_32 step, uint_32 *s, uint_32 *c) {
   uint_32 nco_in_16;
   nco_in_16 = nco + step*16;
   if(((nco^nco_in_16) & 3<<30) == 0) {
@@ -441,7 +410,7 @@ void fast_IF_nco_mask_16(uint_32 nco, uint_32 step, uint_32 *s, uint_32 *c) {
 /************************************************
 *
 ************************************************/
-void fast_IF_nco_mask(uint_32 nco, uint_32 step, uint_32 *s, uint_32 *c) {
+static void fast_IF_nco_mask(uint_32 nco, uint_32 step, uint_32 *s, uint_32 *c) {
   uint_32 nco_in_32;
   nco_in_32 = nco+step*32;
   if( ((nco^nco_in_32) & 3<<30) == 0) {
@@ -591,6 +560,7 @@ void channel_startup(void (*callback)(int sv_id, int phase)) {
    phase_callback = callback; 
    generate_atan2_table();
    generate_gold_codes();
+   generate_gold_codes_epl();
    setup_count_ones();
    channels_used = 0;
 }
@@ -614,7 +584,7 @@ void channel_update(uint_32 data) {
      * Generate the gold codes for this set of
      * samples and advance the NCO   
      ****************************************/ 
-     fast_code_nco(gold_codes[c->sv_id], c->nco_code, c->step_code);
+     fast_code_nco(gold_codes_epl[c->sv_id], c->nco_code, c->step_code);
      new_nco_code = c->nco_code + c->step_code*32;
      if(new_nco_code < c->nco_code)
         new_nco_code += 1<<22;
@@ -647,7 +617,8 @@ void channel_update(uint_32 data) {
          c->early_power_filtered_not_reset -= c->early_power_filtered_not_reset/LATE_EARLY_IIR_FACTOR;
          c->early_power_filtered_not_reset += c->early_sine_count*c->early_sine_count + c->early_cosine_count*c->early_cosine_count;
 #if SHOW_CHANNEL_POWER
-         printf("%7i, ", c->early_power_filtered_not_reset);
+         if(c->sv_id == SHOW_CHANNEL_POWER)
+           printf("%7i, ", c->early_power_filtered_not_reset);
 #endif
          c->early_sine_count   = next_sine;
          c->early_cosine_count = next_cosine;
@@ -677,7 +648,8 @@ void channel_update(uint_32 data) {
          c->prompt_power_filtered -= c->prompt_power_filtered/LATE_EARLY_IIR_FACTOR;
          c->prompt_power_filtered += c->prompt_sine_count*c->prompt_sine_count + c->prompt_cosine_count*c->prompt_cosine_count;
 #if SHOW_CHANNEL_POWER
-         printf(" %7i, ", c->prompt_power_filtered);
+         if(c->sv_id == SHOW_CHANNEL_POWER)
+           printf(" %7i, ", c->prompt_power_filtered);
 #endif
            adjust_prompt(c);
          c->prompt_sc_temp = c->prompt_sine_count;
@@ -713,7 +685,8 @@ void channel_update(uint_32 data) {
          c->late_power_filtered_not_reset -= c->late_power_filtered_not_reset/LATE_EARLY_IIR_FACTOR;
          c->late_power_filtered_not_reset += c->late_sine_count*c->late_sine_count + c->late_cosine_count*c->late_cosine_count;
 #if SHOW_CHANNEL_POWER
-         printf(" %7i\n", c->late_power_filtered_not_reset);
+         if(c->sv_id == SHOW_CHANNEL_POWER)
+           printf(" %7i\n", c->late_power_filtered_not_reset);
 #endif
          c->late_sine_count   = next_sine;
          c->late_cosine_count = next_cosine;

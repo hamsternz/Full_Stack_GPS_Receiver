@@ -133,12 +133,13 @@ int main(int argc, char *argv[]) {
 // lock_phase_nco_step  3ff9eb5a
 // lock code_nco & step       80000      40000 -4137
 ////////////////////////////////////////////////
+#if 1
    sv_id     = 32;
    step_if   = 0x3ff9eb5a;
    nco_code  = ((11438)<<18);
    code_tune = -4137;
    channel_add(sv_id, step_if, nco_code, code_tune);
-
+#endif
    while(1) {
      uint_32 data;
      int ch;

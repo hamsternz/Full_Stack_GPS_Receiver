@@ -60,6 +60,8 @@ int solve_location(int chans,
 
     double weight[NUM_CHANS];
 
+    double err_mag;
+
     *sol_x = *sol_y = *sol_z = *sol_t = t_pc = 0.0;
 
     for (i=0; i<chans && i < NUM_CHANS; i++) {
@@ -75,8 +77,8 @@ int solve_location(int chans,
     t_pc = t_pc/chans + 75e-3;
 
     // Iterate to user xyzt solution using Taylor Series expansion:
-  double err_mag;
     for(j=0; j<MAX_ITER; j++) {
+        double  determinant, dx, dy, dz, dt;
         t_rx = t_pc - *sol_t;
         for (i=0; i<chans; i++) {
             // Convert SV position to ECI coords (20.3.3.4.3.3.2)
@@ -106,7 +108,7 @@ int solve_location(int chans,
             for (i=0; i<chans; i++) ma[r][c] += jac[i][r]*weight[i]*jac[i][c];
         }
 
-        double determinant =
+        determinant =
             ma[0][3]*ma[1][2]*ma[2][1]*ma[3][0] - ma[0][2]*ma[1][3]*ma[2][1]*ma[3][0] - ma[0][3]*ma[1][1]*ma[2][2]*ma[3][0] + ma[0][1]*ma[1][3]*ma[2][2]*ma[3][0]+
             ma[0][2]*ma[1][1]*ma[2][3]*ma[3][0] - ma[0][1]*ma[1][2]*ma[2][3]*ma[3][0] - ma[0][3]*ma[1][2]*ma[2][0]*ma[3][1] + ma[0][2]*ma[1][3]*ma[2][0]*ma[3][1]+
             ma[0][3]*ma[1][0]*ma[2][2]*ma[3][1] - ma[0][0]*ma[1][3]*ma[2][2]*ma[3][1] - ma[0][2]*ma[1][0]*ma[2][3]*ma[3][1] + ma[0][0]*ma[1][2]*ma[2][3]*ma[3][1]+
@@ -145,10 +147,10 @@ int solve_location(int chans,
             for (i=0; i<chans; i++) md[r] += mc[r][i]*weight[i]*dPR[i];
         }
 
-        double dx = md[0];
-        double dy = md[1];
-        double dz = md[2];
-        double dt = md[3];
+        dx = md[0];
+        dy = md[1];
+        dz = md[2];
+        dt = md[3];
 
         err_mag = sqrt(dx*dx + dy*dy + dz*dz);
 
