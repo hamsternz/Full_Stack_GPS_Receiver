@@ -10,6 +10,7 @@ typedef char          int_8;
 #include "channel.h"
 
 #define SHOW_CHANNEL_POWER 0
+#define CALC_NOT_FILTERED  1
 struct Channel {
    uint_32 nco_if;
    uint_32 step_if;
@@ -26,12 +27,11 @@ struct Channel {
    uint_32 prompt_power_filtered;
    uint_32 late_power_filtered;
 
+#if CALC_NOT_FILTERED
    uint_32 early_power_filtered_not_reset;
    uint_32 prompt_power_filtered_not_reset;
    uint_32 late_power_filtered_not_reset;
-
-   int prompt_sc_temp;
-   int prompt_cc_temp;
+#endif
 
    uint_8 last_angle;
    int_32 delta_filtered;
@@ -299,26 +299,8 @@ void fast_code_nco(uint_32 *gc_epl, uint_32 nco, uint_32 step) {
   uint_32 phaseE, phaseP, phaseL;
 
   phaseP = nco>>18;
-  if(phaseP < 16)
-    phaseL = phaseP - 16+16368;
-  else
-    phaseL = phaseP -16;
-  if(phaseP >= 16*1022)
-    phaseE = phaseP + 16-16368;
-  else
-    phaseE = phaseP +16;
 
-  early_code  = gc_epl[phaseE]; 
   prompt_code = gc_epl[phaseP]; 
-  late_code   = gc_epl[phaseL]; 
- 
-  early_end_of_repeat  = 0;
-  early_mask  = 0;
-  if(phaseE >= 1023*16-32) {
-    early_end_of_repeat   = 1;
-    early_mask   = masks[phaseE-1021*16];
-  } 
-
   prompt_end_of_repeat = 0;
   prompt_mask = 0;
   if(phaseP >= 1023*16-32) {
@@ -326,6 +308,17 @@ void fast_code_nco(uint_32 *gc_epl, uint_32 nco, uint_32 step) {
     prompt_mask   = masks[phaseP-1021*16];
   }
 
+  phaseE = phaseP + (phaseP < 16*1023-12 ? 12 : 12-16368);
+  early_code  = gc_epl[phaseE]; 
+  early_end_of_repeat  = 0;
+  early_mask  = 0;
+  if(phaseE >= 1023*16-32) {
+    early_end_of_repeat   = 1;
+    early_mask   = masks[phaseE-1021*16];
+  } 
+
+  phaseL = phaseP - (phaseP < 12 ? 12-16368 : 12);
+  late_code   = gc_epl[phaseL]; 
   late_end_of_repeat   = 0;
   late_mask   = 0;
   if(phaseL >= 1023*16-32) {
@@ -534,9 +527,14 @@ uint_32 channel_get_sv_id(int handle) {
 int channel_get_power(int handle, uint_32 *early_power, uint_32 *prompt_power, uint_32 *late_power) {
   if(handle < 0 || handle >= channels_used)
     return -1;
-  *early_power  = channels[handle].early_power_filtered_not_reset;
   *prompt_power = channels[handle].prompt_power_filtered;
+#if CALC_NOT_FILTERED
+  *early_power  = channels[handle].early_power_filtered_not_reset;
   *late_power   = channels[handle].late_power_filtered_not_reset;
+#else
+  *early_power  = channels[handle].early_power_filtered;
+  *late_power   = channels[handle].late_power_filtered;
+#endif
   return 1;
 }
 /************************************************
@@ -614,8 +612,10 @@ void channel_update(uint_32 data) {
          c->early_cosine_count -= next_cosine + c->early_sample_count/2;
          c->early_power_filtered -= c->early_power_filtered/LATE_EARLY_IIR_FACTOR;
          c->early_power_filtered += c->early_sine_count*c->early_sine_count + c->early_cosine_count*c->early_cosine_count;
+#if CALC_NOT_FILTERED
          c->early_power_filtered_not_reset -= c->early_power_filtered_not_reset/LATE_EARLY_IIR_FACTOR;
          c->early_power_filtered_not_reset += c->early_sine_count*c->early_sine_count + c->early_cosine_count*c->early_cosine_count;
+#endif
 #if SHOW_CHANNEL_POWER
          if(c->sv_id == SHOW_CHANNEL_POWER)
            printf("%7i, ", c->early_power_filtered_not_reset);
@@ -652,8 +652,6 @@ void channel_update(uint_32 data) {
            printf(" %7i, ", c->prompt_power_filtered);
 #endif
            adjust_prompt(c);
-         c->prompt_sc_temp = c->prompt_sine_count;
-         c->prompt_cc_temp = c->prompt_cosine_count;
          c->prompt_sine_count   = next_sine;
          c->prompt_cosine_count = next_cosine;
          c->prompt_sample_count = next_sample_count;
@@ -682,8 +680,10 @@ void channel_update(uint_32 data) {
          c->late_cosine_count -= next_cosine + c->late_sample_count/2;
          c->late_power_filtered -= c->late_power_filtered/LATE_EARLY_IIR_FACTOR;
          c->late_power_filtered += c->late_sine_count*c->late_sine_count + c->late_cosine_count*c->late_cosine_count;
+#if CALC_NOT_FILTERED
          c->late_power_filtered_not_reset -= c->late_power_filtered_not_reset/LATE_EARLY_IIR_FACTOR;
          c->late_power_filtered_not_reset += c->late_sine_count*c->late_sine_count + c->late_cosine_count*c->late_cosine_count;
+#endif
 #if SHOW_CHANNEL_POWER
          if(c->sv_id == SHOW_CHANNEL_POWER)
            printf(" %7i\n", c->late_power_filtered_not_reset);

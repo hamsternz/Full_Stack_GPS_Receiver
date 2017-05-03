@@ -7,4 +7,5 @@ Because eveything is fixed, it can process data 32 bits at a time, and
 can track 300x(!) faster than the original version.
 
 Changing it to a different or variable sample rate would be very hard, but
-you are willing to try.
+you are willing to try email mail me and I'll send you some pointers
+

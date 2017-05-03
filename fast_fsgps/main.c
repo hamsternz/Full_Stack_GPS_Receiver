@@ -144,7 +144,7 @@ int main(int argc, char *argv[]) {
      uint_32 data;
      int ch;
      static int processed = 0;
-     if(processed % ((16368000/32)*2) == 0) {
+     if(processed % ((16368000/32)/20) == 0) {
        int c, pos_sv[MAX_POS];
        double lat,lon,alt;
        double pos_x[MAX_POS], pos_y[MAX_POS], pos_z[MAX_POS], pos_t[MAX_POS];
