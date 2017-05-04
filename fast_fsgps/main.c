@@ -3,15 +3,15 @@
 #include <math.h>
 #include <assert.h>
 
-typedef unsigned char uint_8;
-typedef unsigned int  uint_32;
-typedef int           int_32;
-typedef char          int_8;
+#include "types.h"
+#include "gold_codes.h"
 #include "channel.h"
 #include "nav.h"
 #include "solve.h"
+#include "acquire.h"
 
 #define MAX_POS 10
+#define DROP_LOW_POWER 0
 static const double PI             = 3.1415926535898;
 
 /************************************************
@@ -46,7 +46,9 @@ int main(int argc, char *argv[]) {
      printf("Unable to open file\n");
      return 0;
    }
+   gold_code_startup();
    nav_startup();
+   acquire_startup();
    channel_startup(nav_add_bit);
 
    /* Set the start values */
@@ -144,10 +146,12 @@ int main(int argc, char *argv[]) {
      uint_32 data;
      int ch;
      static int processed = 0;
-     if(processed % ((16368000/32)/20) == 0) {
+     if(processed % ((16368000/32)/100) == 0) {
        int c, pos_sv[MAX_POS];
+       int bad_time_detected = 0;
        double lat,lon,alt;
        double pos_x[MAX_POS], pos_y[MAX_POS], pos_z[MAX_POS], pos_t[MAX_POS];
+       
        int pos_used = 0;
        double sol_x=0.0, sol_y=0.0, sol_z=0.0, sol_t=0.0;
        printf("Update at %8.3f\n", processed/(double)(16368000/32));
@@ -177,6 +181,12 @@ int main(int argc, char *argv[]) {
        for(c = 0; c < channel_get_count() && pos_used < MAX_POS; c++) {
          double raw_time;
          int sv;
+#if DROP_LOW_POWER
+         uint_32 early_power, prompt_power, late_power;
+         channel_get_power(c, &early_power, &prompt_power, &late_power);
+         if(prompt_power < 1000000)
+           continue;
+#endif
          sv = channel_get_sv_id(c);
          raw_time = nav_ms_of_frame(sv) + channel_get_nco_phase(c)/(channel_get_nco_limit()+1.0);
          raw_time += nav_subframe_of_week(sv)*6000.0;
@@ -189,7 +199,34 @@ int main(int argc, char *argv[]) {
          pos_used++;
        }
 
-       printf("Space Vehicle Positions:\n");
+       for(c = 0; c < pos_used; c++) {
+         double diff = 0.0;
+         int n = 0,c2;
+         for(c2 = 0; c2 < pos_used; c2++) {
+           if(c2 != c) {
+             double d = pos_t[c2] - pos_t[c];
+             /* Remove weekly wraps */
+             if(d > 7*24*3600/2)
+                d -= 7*24*3600/2;
+             if(d < -7*24*3600/2)
+                d += 7*24*3600/2;
+             diff += d;
+             n++;
+           }
+         }
+         if(diff/n > 0.1) {
+           bad_time_detected = 1;
+           for(c2 = c; c < pos_used-1; c++) {
+             pos_t[c2] = pos_t[c2+1];
+             pos_x[c2] = pos_x[c2+1];
+             pos_y[c2] = pos_y[c2+1];
+             pos_z[c2] = pos_z[c2+1];
+           }
+           pos_used--; 
+         }
+       }
+
+       printf("Space Vehicle Positions:   %s\n", bad_time_detected ? "BAD TIME DETECTED - SV position dropped\n" : "");
        printf("sv,            x,            y,            z,            t\n"); 
        for(c = 0; c < pos_used; c++) {
          printf("%2i, %12.2f, %12.2f, %12.2f, %12.8f\n",pos_sv[c], pos_x[c], pos_y[c], pos_z[c], pos_t[c]);
@@ -206,7 +243,6 @@ int main(int argc, char *argv[]) {
        }
        printf("\n");
        printf("\n");
-//       usleep(100000);
      }
      processed++;
 
@@ -224,6 +260,7 @@ int main(int argc, char *argv[]) {
      if(ch == EOF) break;
      data |= swap_bits[ch]<<0;
      channel_update(data);
+     acquire_update(data);
       
    }
    return 0;

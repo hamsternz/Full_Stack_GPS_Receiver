@@ -33,12 +33,8 @@ SOFTWARE.
 #include <memory.h>
 #include <math.h>
 #include <time.h>
+#include "types.h"
 #include "nav.h"
-
-typedef unsigned char uint_8;
-typedef unsigned int  uint_32;
-typedef int           int_32;
-typedef char          int_8;
 
 #define MAX_SV 33
 
