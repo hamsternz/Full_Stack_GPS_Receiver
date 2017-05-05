@@ -733,7 +733,7 @@ static void nav_new_bit(struct Nav_data *nd, uint_8 s) {
 * unexpected BPSK phase flip
 *************************************************************************/
 static void nav_abandon(struct Nav_data *nd) {
-    printf("%2i: Abandon - %5i errors\n", nd->sv_id, nd->raw_navdata.bit_errors);
+//    printf("%2i: Abandon - %5i errors\n", nd->sv_id, nd->raw_navdata.bit_errors);
     nd->raw_navdata.valid_bits = 0;
     nd->raw_navdata.synced = 0;
     nd->raw_navdata.bit_errors++;

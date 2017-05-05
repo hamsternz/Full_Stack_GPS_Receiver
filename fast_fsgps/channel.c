@@ -140,11 +140,11 @@ static void generate_atan2_table(void) {
 * A quick way to calculat the number of set bits
 ************************************************/
 static unsigned char ones_lookup[256];
-void setup_count_ones(void) {
+static void setup_count_ones(void) {
   int i;
   for(i = 0; i < 256; i++) {
     int j;
-    for(j = 0; j < 32; j++) {
+    for(j = 0; j < 8; j++) {
       if(i&(1<<j))
         ones_lookup[i]++;
     }
