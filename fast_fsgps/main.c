@@ -17,19 +17,28 @@ static const double PI             = 3.1415926535898;
 int sv_search_order[] = {4,14,22,25,26,31,32};
 
 void acquire_hit(int sv_id, uint_32 step_if, uint_32 offset) {
-  printf("Hit! %i: %08X, %08x", sv_id,  step_if, offset);
-  channel_add(sv_id, step_if, offset,0);
+  printf("Hit! %i: %08X, %08x\n", sv_id,  step_if, offset);
+
+  if(!nav_bit_sync(sv_id))
+   channel_add(sv_id, step_if, offset, 0);
+ 
 }
 
 void next_acquire_callback(int sv)  {
   int i = 0;
   for(i = 0; i < sizeof(sv_search_order)/sizeof(int)-1;i++) {
     if(sv_search_order[i] == sv) {
-       acquire_start(sv_search_order[i+1],acquire_hit,next_acquire_callback);
-       return;
+       i++;
+       while(i < sizeof(sv_search_order)/sizeof(int)) {
+         if(!nav_bit_sync(sv_search_order[i])) {
+           acquire_start(sv_search_order[i],acquire_hit,next_acquire_callback);
+           return; 
+         }
+         i++;
+       }
     }
   }
-//  acquire_start(sv_search_order[0],acquire_hit ,next_acquire_callback);
+  acquire_start(sv_search_order[0],acquire_hit ,next_acquire_callback);
 }
 
 /************************************************
@@ -185,8 +194,8 @@ int main(int argc, char *argv[]) {
      ch  = getc(f);
      if(ch == EOF) break;
      data |= swap_bits[ch]<<0;
+     acquire_update(data);  /* This has to go first ! */
      channel_update(data);
-     acquire_update(data);
       
    }
    return 0;

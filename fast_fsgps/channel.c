@@ -53,7 +53,7 @@ struct Channel {
 #define ATAN2_SIZE 128
 static uint_8 atan2_lookup[ATAN2_SIZE][ATAN2_SIZE];
 
-#define MAX_CHANNELS 8
+#define MAX_CHANNELS 16
 static struct Channel channels[MAX_CHANNELS];
 static int channels_used = 0;
 
@@ -348,11 +348,23 @@ static void adjust_prompt(struct Channel *ch) {
 *
 ************************************************/
 int  channel_add(int_8 sv_id, uint_32 step_if, uint_32 nco_code, int_32 code_tune) {
-  if(channels_used == MAX_CHANNELS)
-     return -1;
+  int i;
   if(sv_id > MAX_SV_ID || sv_id < MIN_SV_ID)
      return -1;
 
+  for(i = 0; i < channels_used; i++ ) {
+    if(channels[i].sv_id == sv_id) {
+      printf("=========== UPDATE! =================\n");
+      channels[i].step_if   = step_if;
+      channels[i].nco_code  = nco_code;
+      channels[i].code_tune = code_tune;
+      channels[i].step_code = 0x00040000;
+      return i;
+    }
+  } 
+
+  if(channels_used == MAX_CHANNELS)
+     return -1;
   channels[channels_used].sv_id     = sv_id;
   channels[channels_used].step_if   = step_if;
   channels[channels_used].nco_code  = nco_code;

@@ -3,10 +3,20 @@
 #include "gold_codes.h"
 #include "acquire.h"
 
-#define N_BANDS  21
-#define IF_BAND 525*500
+#define N_BANDS  41
+#define IF_BAND (525*250)
 uint_32 ncos_phase[N_BANDS];
 uint_32 ncos_step[N_BANDS] = {
+   0x40000000 -20*IF_BAND,
+   0x40000000 -19*IF_BAND,
+   0x40000000 -18*IF_BAND,
+   0x40000000 -17*IF_BAND,
+   0x40000000 -16*IF_BAND,
+   0x40000000 -15*IF_BAND,
+   0x40000000 -14*IF_BAND,
+   0x40000000 -13*IF_BAND,
+   0x40000000 -12*IF_BAND,
+   0x40000000 -11*IF_BAND,
    0x40000000 -10*IF_BAND,
    0x40000000 - 9*IF_BAND,
    0x40000000 - 8*IF_BAND,
@@ -27,7 +37,17 @@ uint_32 ncos_step[N_BANDS] = {
    0x40000000 + 7*IF_BAND,
    0x40000000 + 8*IF_BAND,
    0x40000000 + 8*IF_BAND,
-   0x40000000 +10*IF_BAND
+   0x40000000 +10*IF_BAND,
+   0x40000000 +11*IF_BAND,
+   0x40000000 +12*IF_BAND,
+   0x40000000 +13*IF_BAND,
+   0x40000000 +14*IF_BAND,
+   0x40000000 +15*IF_BAND,
+   0x40000000 +16*IF_BAND,
+   0x40000000 +17*IF_BAND,
+   0x40000000 +18*IF_BAND,
+   0x40000000 +19*IF_BAND,
+   0x40000000 +20*IF_BAND
 };
 
 static uint_32 *sv_gold_codes;
@@ -197,9 +217,16 @@ void acquire_update(uint_32 samples) {
   if(!sv_gold_codes)
      return;
 
+  /* Advance two code chips */
+  if(max_offset < 2)
+    max_offset += 1023-2;
+  else
+    max_offset -= 2;
+
   if(code_phase == 1023) {
+    int new_max = 0;
     code_phase = 0;
-    /* what we do when we have completeply processed two cycles
+    /* what we do when we have completly processed two cycles
        of the Gold Code */
     for(i = 0; i < N_BANDS; i++) {
       uint_32 p;
@@ -212,32 +239,35 @@ void acquire_update(uint_32 samples) {
         max_band   = i;
         max_offset = 0;
         if(p > 500000) {
-            if(callback_success)
-              callback_success(current_sv, ncos_step[max_band], 0);
-            else
-              printf("No Callback!\n");
+          new_max = 1;
         }
       }
-#if 0
-      p /= 10000;
-      if(p > 12)
-        printf("%4i,", p);
-      else
-        printf("    ,");
-#endif
     }
-#if 0
-    printf("\n");
-#endif
+
+    if(new_max) {
+      printf("%02i: ",current_sv);
+      for(i = 0; i < N_BANDS; i++) {
+         uint_32 p;
+         p = ones_s[i]*ones_s[i]+ones_c[i]*ones_c[i];
+         printf("%4i, ",p/100000); 
+      }
+      printf("\n");
+    }
+
     for(i = 0; i < N_BANDS; i++) {
       ones_s[i] = 0;
       ones_c[i] = 0;
     }
 #if 1
-    if(tries == 1023*2)
+    if(tries == 1023)
     {
        uint_32 temp_sv = current_sv;
-       printf("%02i: Max %2i (%8x), %4i, %8i\n",current_sv, max_band, ncos_step[max_band], max_offset, max_power);
+       printf("XXX %02i: Max %2i (%8x), %4i, %8i\n",current_sv, max_band, ncos_step[max_band], max_offset, max_power); 
+    
+       if(max_power > 600000) {
+         if(callback_success)
+          callback_success(current_sv,ncos_step[max_band],((1023<<22)-1) - (max_offset<<22));
+       }
        sv_gold_codes = NULL;
        if(callback_finished)
          callback_finished(temp_sv);
@@ -263,12 +293,6 @@ void acquire_update(uint_32 samples) {
   for(i = 0; i < N_BANDS; i++) {
      ncos_phase[i] += ncos_step[i]*32;
   }
-
-  /* Advance two code chips */
-  if(max_offset < 2)
-      max_offset += 1023-2;
-    else
-      max_offset -= 2;
 }
 
 int acquire_stop(int sv_id) {
