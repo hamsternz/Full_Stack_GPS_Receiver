@@ -4,7 +4,7 @@
 #include "acquire.h"
 
 #define N_BANDS  41
-#define IF_BAND (525*250)
+#define IF_BAND (525*250)   // Bands are 250Hz wide,
 uint_32 ncos_phase[N_BANDS];
 uint_32 ncos_step[N_BANDS] = {
    0x40000000 -20*IF_BAND,
@@ -70,8 +70,8 @@ static void setup_count_ones(void) {
     }
   }
 }
-void (*callback_success)(int sv, uint_32 freq, uint_32 offset);
-void (*callback_finished)(int sv);
+
+void (*callback_finished)(int sv, uint_32 freq, uint_32 offset, uint_32 power);
 
 static int count_ones(uint_32 a) {
   int rtn;
@@ -84,17 +84,13 @@ static int count_ones(uint_32 a) {
 }
 
 void acquire_startup(void) {
-  int i;
   setup_count_ones();
-  for(i = 0; i < N_BANDS; i++) {
-     printf("%2i, %08X\n",i,ncos_step[i]);
-  }
 }
 
-int acquire_start(int sv_id, void (*success_callback)(int sv, uint_32 freq, uint_32 offset), void (*finished_callback)(int sv)) {
+int acquire_start(int sv_id, void (*callback)(int sv, uint_32 freq, uint_32 offset, uint_32 power)) {
   int i;
-  callback_success = success_callback;
-  callback_finished  = finished_callback;
+  printf("Attempting to acquire sv %i\n",sv_id);
+  callback_finished  = callback;
   current_sv = sv_id;
   sv_gold_codes = &(gold_codes_32_cycles[sv_id][0]);
   for(i = 0; i < N_BANDS; i++) {
@@ -261,16 +257,9 @@ void acquire_update(uint_32 samples) {
 #if 1
     if(tries == 1023)
     {
-       uint_32 temp_sv = current_sv;
-       printf("XXX %02i: Max %2i (%8x), %4i, %8i\n",current_sv, max_band, ncos_step[max_band], max_offset, max_power); 
-    
-       if(max_power > 600000) {
-         if(callback_success)
-          callback_success(current_sv,ncos_step[max_band],((1023<<22)-1) - (max_offset<<22));
-       }
        sv_gold_codes = NULL;
        if(callback_finished)
-         callback_finished(temp_sv);
+          callback_finished(current_sv,ncos_step[max_band],((1023<<22)-1) - (max_offset<<22),max_power);
     }
     else
        tries++;

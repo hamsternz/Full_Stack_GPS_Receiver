@@ -354,7 +354,7 @@ int  channel_add(int_8 sv_id, uint_32 step_if, uint_32 nco_code, int_32 code_tun
 
   for(i = 0; i < channels_used; i++ ) {
     if(channels[i].sv_id == sv_id) {
-      printf("=========== UPDATE! =================\n");
+      printf("=========== UPDATE %2i =================\n",sv_id);
       channels[i].step_if   = step_if;
       channels[i].nco_code  = nco_code;
       channels[i].code_tune = code_tune;
@@ -435,6 +435,19 @@ uint_32 channel_get_nco_phase(int handle) {
 uint_32 channel_get_nco_limit(void) {
    return (1023<<22)-1;
 }
+
+/************************************************
+*
+************************************************/
+uint_32 channel_tracking(int sv_id) {
+  int i;
+  for(i = 0; i < channels_used; i++) {
+     if(channels[i].sv_id == sv_id)
+       return 1;
+  }
+  return 0;
+}
+
 /************************************************
 *
 ************************************************/

@@ -14,31 +14,53 @@
 #define DROP_LOW_POWER 0
 static const double PI             = 3.1415926535898;
 
-int sv_search_order[] = {4,14,22,25,26,31,32};
+static uint_32 priorities[33];
 
-void acquire_hit(int sv_id, uint_32 step_if, uint_32 offset) {
-  printf("Hit! %i: %08X, %08x\n", sv_id,  step_if, offset);
+void acquire_callback(int sv_id, uint_32 step_if, uint_32 offset, uint_32 power) {
+  int max_p = 0;
+  int max_sv = sv_id;
+  int i;
+  printf("Hit! %i: %08X, %08x, %10i\n", sv_id,  step_if, offset, power);
+  for(i = 1; i < 32; i++) 
+    printf("%2i ", priorities[i]);
+  printf("%2i\n", priorities[i]);
 
-  if(!nav_bit_sync(sv_id))
-   channel_add(sv_id, step_if, offset, 0);
- 
-}
+  if(power > 500000)
+     priorities[sv_id] = 28;
+  else if(power > 300000)
+     priorities[sv_id] = 24;
+  else
+     priorities[sv_id] = 0;
 
-void next_acquire_callback(int sv)  {
-  int i = 0;
-  for(i = 0; i < sizeof(sv_search_order)/sizeof(int)-1;i++) {
-    if(sv_search_order[i] == sv) {
-       i++;
-       while(i < sizeof(sv_search_order)/sizeof(int)) {
-         if(!nav_bit_sync(sv_search_order[i])) {
-           acquire_start(sv_search_order[i],acquire_hit,next_acquire_callback);
-           return; 
-         }
-         i++;
-       }
+  if(power > 500000 && !nav_bit_sync(sv_id)) {
+     channel_add(sv_id, step_if, offset, 0);
+     nav_clear_bit_errors_count(sv_id);
+   }
+
+  /* Bump up everybody */
+  for(i = 1; i < 33; i++) {
+    if(channel_tracking(i) && nav_get_bit_errors_count(i) < 10)
+      priorities[i]=0; 
+    else if(nav_get_bit_errors_count(i) > 1000)
+      priorities[i]+=4; 
+    else
+      priorities[i]++; 
+  }
+
+  /* Find the next highest */
+  for(i = 1; i < 33; i++) {
+    sv_id++;  
+    if(sv_id > 32)
+      sv_id = 1;
+    if(!channel_tracking(sv_id)) {
+      if(max_p <  priorities[i]) {
+         max_p =  priorities[i];
+         max_sv = i;
+      }
     }
   }
-  acquire_start(sv_search_order[0],acquire_hit ,next_acquire_callback);
+
+  acquire_start(max_sv, acquire_callback);
 }
 
 /************************************************
@@ -48,6 +70,10 @@ int main(int argc, char *argv[]) {
    static unsigned swap_bits[256];
    FILE *f;
    int q;
+
+   for(q = 0; q < 33; q++) {
+     priorities[q] = 32;
+   }
 
    for(q = 0; q < 256; q++) {
      swap_bits[q] = 0;
@@ -75,7 +101,7 @@ int main(int argc, char *argv[]) {
    acquire_startup();
    channel_startup(nav_add_bit);
 
-   acquire_start(sv_search_order[0],acquire_hit ,next_acquire_callback);
+   acquire_start(1, acquire_callback);
 
    while(1) {
      uint_32 data;
@@ -98,7 +124,7 @@ int main(int argc, char *argv[]) {
          sv = channel_get_sv_id(c);
          channel_get_power(c, &early_power, &prompt_power, &late_power);
          frames = nav_known_frames(sv); 
-         printf("%02i, %7i,  %10i,  %12.7f, %9u, %9u, %9u,  %c%c%c%c%c\n", 
+         printf("%02i, %7i,  %10i,  %12.7f, %9u, %9u, %9u,  %c%c%c%c%c  %4i\n", 
              channel_get_sv_id(c),
              nav_week_num(sv),
              nav_subframe_of_week(sv),
@@ -108,7 +134,8 @@ int main(int argc, char *argv[]) {
              frames & 0x02 ? '2' : '-',
              frames & 0x04 ? '3' : '-',
              frames & 0x08 ? '4' : '-',
-             frames & 0x10 ? '5' : '-'
+             frames & 0x10 ? '5' : '-',
+             nav_get_bit_errors_count(sv)
          );
        }
        printf("\n");
@@ -123,6 +150,12 @@ int main(int argc, char *argv[]) {
            continue;
 #endif
          sv = channel_get_sv_id(c);
+
+         if(nav_week_num(sv) < 0 )
+           continue;
+         if(nav_ms_of_frame(sv) <0 )
+           continue;
+ 
          raw_time = nav_ms_of_frame(sv) + channel_get_nco_phase(c)/(channel_get_nco_limit()+1.0);
          raw_time += nav_subframe_of_week(sv)*6000.0;
          raw_time /= 1000;

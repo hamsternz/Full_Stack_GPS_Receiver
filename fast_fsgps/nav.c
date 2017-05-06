@@ -135,7 +135,7 @@ struct Nav_data {
 *                                             
 *************************************************/
 int nav_bit_sync(int sv) {
-   if(nav_data[sv].raw_navdata.valid_bits > 6)
+   if(nav_data[sv].raw_navdata.valid_bits > 1)
       return 1;
    return 0;
 }
@@ -748,6 +748,23 @@ static void nav_abandon(struct Nav_data *nd) {
     nd->raw_navdata.bit_errors++;
 }
 
+/*************************************************************************
+*
+*************************************************************************/
+int nav_get_bit_errors_count(int sv_id) {
+  if(sv_id <1 || sv_id > 32)
+    return -1;
+  return nav_data[sv_id].raw_navdata.bit_errors;
+} 
+/*************************************************************************
+*
+*************************************************************************/
+int nav_clear_bit_errors_count(int sv_id) {
+  if(sv_id <1 || sv_id > 32)
+    return -1;
+  nav_data[sv_id].raw_navdata.bit_errors = 0;
+  return 1;
+} 
 /*************************************************************************
 * We have a new MS of signal. Work towards decoding a bit of BPSH data
 *************************************************************************/
