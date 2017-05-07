@@ -57,7 +57,7 @@ static uint_32 ones_c[N_BANDS];
 static uint_32 tries;
 static uint_32 max_offset;
 static uint_32 max_power;
-static uint_32 max_band;
+static uint_32 max_step;
 static uint_32 current_sv;
 static unsigned char ones_lookup[256];
 static void setup_count_ones(void) {
@@ -71,7 +71,8 @@ static void setup_count_ones(void) {
   }
 }
 
-void (*callback_finished)(int sv, uint_32 freq, uint_32 offset, uint_32 power);
+void (*finished_cb)(int sv, uint_32 power);
+void (*power_cb)(int sv, uint_32 freq, uint_32 offset, uint_32 power);
 
 static int count_ones(uint_32 a) {
   int rtn;
@@ -87,10 +88,11 @@ void acquire_startup(void) {
   setup_count_ones();
 }
 
-int acquire_start(int sv_id, void (*callback)(int sv, uint_32 freq, uint_32 offset, uint_32 power)) {
+int acquire_start(int sv_id, void (*callback_power)(int sv, uint_32 freq, uint_32 offset, uint_32 power), void (*callback_finished)(int sv, uint_32 power)) {
   int i;
   printf("Attempting to acquire sv %i\n",sv_id);
-  callback_finished  = callback;
+  power_cb    = callback_power;
+  finished_cb = callback_finished;
   current_sv = sv_id;
   sv_gold_codes = &(gold_codes_32_cycles[sv_id][0]);
   for(i = 0; i < N_BANDS; i++) {
@@ -220,34 +222,50 @@ void acquire_update(uint_32 samples) {
     max_offset -= 2;
 
   if(code_phase == 1023) {
-    int new_max = 0;
     code_phase = 0;
     /* what we do when we have completly processed two cycles
        of the Gold Code */
     for(i = 0; i < N_BANDS; i++) {
-      uint_32 p;
       ones_s[i] -= 16368;
       ones_c[i] -= 16368;
+    }
+
+    for(i = 0; i < N_BANDS; i++) {
+      uint_32 p;
       /* See if this is the highest power so far */
       p = ones_s[i]*ones_s[i]+ones_c[i]*ones_c[i];
       if(p > max_power) {
         max_power  = p;
-        max_band   = i;
-        max_offset = 0;
-        if(p > 500000) {
-          new_max = 1;
-        }
-      }
-    }
+        max_step   = ncos_step[i];
+        if(i == 0) {
+          max_step   = ncos_step[i]*3/4 + ncos_step[i+1]/4;
+        } else if (i == N_BANDS-1) {
+          max_step   = ncos_step[i]*3/4 + ncos_step[i-1]/4;
+        } else {
+#if 0
+          uint_32 a,b;
+          a = ones_s[i-1]*ones_s[i-1]+ones_c[i-1]*ones_c[i-1];
+          b = ones_s[i+1]*ones_s[i+1]+ones_c[i+1]*ones_c[i+1];
 
-    if(new_max) {
-      printf("%02i: ",current_sv);
-      for(i = 0; i < N_BANDS; i++) {
-         uint_32 p;
-         p = ones_s[i]*ones_s[i]+ones_c[i]*ones_c[i];
-         printf("%4i, ",p/100000); 
+          if(a > b) {
+             if( p/4 > a)
+               max_step   = ncos_step[i]/2 + ncos_step[i-1]/2;
+             else
+               max_step   = ncos_step[i]*3/4 + ncos_step[i-1]/4;
+          }
+
+          if(a < b) {
+             if( p/4 > b)
+               max_step   = ncos_step[i]/2 + ncos_step[i+1]/2;
+             else
+               max_step   = ncos_step[i]*3/4 + ncos_step[i+1]/4;
+          }
+#endif
+          if(power_cb)
+            power_cb(current_sv,max_step,0,max_power/4);
+        }
+        max_offset = 0;
       }
-      printf("\n");
     }
 
     for(i = 0; i < N_BANDS; i++) {
@@ -258,8 +276,8 @@ void acquire_update(uint_32 samples) {
     if(tries == 1023)
     {
        sv_gold_codes = NULL;
-       if(callback_finished)
-          callback_finished(current_sv,ncos_step[max_band],((1023<<22)-1) - (max_offset<<22),max_power);
+       if(finished_cb)
+          finished_cb(current_sv, max_power);
     }
     else
        tries++;

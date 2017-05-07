@@ -12,6 +12,7 @@
 struct Channel {
    uint_32 nco_if;
    uint_32 step_if;
+   uint_32 step_if_starting;
 
    uint_32 nco_code;
    uint_32 step_code;
@@ -40,6 +41,7 @@ struct Channel {
    uint_8 channel_allocated;
    uint_8 sv_id;
    uint_8 disable_track;
+   uint_8 flipped;
 };
 
 /* Filter factors */
@@ -92,7 +94,7 @@ static uint_32 masks[32] = {
    0x7FFFFFFF
 };
 
-void (*phase_callback)(int sv_id, int phase);
+int (*phase_callback)(int sv_id, int phase);
 
 /***************************************
 * Space to hold the current bitmaps info,
@@ -105,6 +107,15 @@ static int early_end_of_repeat;
 static int prompt_end_of_repeat;
 static int late_end_of_repeat;
 
+/*********************************************************************
+*
+*********************************************************************/
+int channel_remove(int handle) {
+   if(handle > channels_used-1)
+      return 0;
+   channels[handle].sv_id = 0;
+   return 1;
+}
 /*********************************************************************
 * Generate the atan2 table
 *********************************************************************/
@@ -341,7 +352,30 @@ static void adjust_prompt(struct Channel *ch) {
 #endif
 
     /* Pass the phase info to the external design */
-    phase_callback(ch->sv_id, ch->prompt_cosine_count);
+    if(phase_callback(ch->sv_id, ch->prompt_cosine_count))
+      return;
+
+    /* If we have got here, we have most likely locked 500Hz off carrier. Jumping
+       to the other side of the starting point will usually be right where we want
+       to be */
+    if(!ch->flipped) {
+      if(ch->step_if_starting < ch->step_if) {
+        ch->step_if -= 252*500;
+      } else {
+        ch->step_if += 252*500;
+      }
+      ch->flipped = 1;
+      return;
+    }
+    int i;
+    for(i = 0; i < channels_used; i++) {
+       if(channels[i].sv_id == ch->sv_id) 
+         break;
+    }
+
+    if(i < channels_used)
+      channel_remove(i);
+    printf("Removed!");
 }
 
 /************************************************
@@ -355,21 +389,38 @@ int  channel_add(int_8 sv_id, uint_32 step_if, uint_32 nco_code, int_32 code_tun
   for(i = 0; i < channels_used; i++ ) {
     if(channels[i].sv_id == sv_id) {
       printf("=========== UPDATE %2i =================\n",sv_id);
-      channels[i].step_if   = step_if;
-      channels[i].nco_code  = nco_code;
-      channels[i].code_tune = code_tune;
-      channels[i].step_code = 0x00040000;
+      channels[i].step_if          = step_if;
+      channels[i].step_if_starting = step_if;
+      channels[i].nco_code         = nco_code;
+      channels[i].code_tune        = code_tune;
+      channels[i].step_code        = 0x00040000;
+      channels[i].flipped          = 0;
       return i;
     }
   } 
+
+  for(i = 0; i < channels_used; i++ ) {
+    if(channels[i].sv_id == sv_id) {
+      channels[i].sv_id     = sv_id;
+      channels[i].step_if          = step_if;
+      channels[i].step_if_starting = step_if;
+      channels[i].nco_code         = nco_code;
+      channels[i].code_tune        = code_tune;
+      channels[i].step_code        = 0x00040000;
+      channels[i].flipped          = 0;
+      return i;
+    }
+  }
 
   if(channels_used == MAX_CHANNELS)
      return -1;
   channels[channels_used].sv_id     = sv_id;
   channels[channels_used].step_if   = step_if;
+  channels[channels_used].step_if_starting = step_if;
   channels[channels_used].nco_code  = nco_code;
   channels[channels_used].code_tune = code_tune;
   channels[channels_used].step_code = 0x00040000;
+  channels[channels_used].flipped   = 0;
   channels_used++;
   return channels_used-1;
 }
@@ -404,6 +455,22 @@ uint_32 channel_get_sv_id(int handle) {
   if(handle < 0 || handle >= channels_used)
     return -1;
   return channels[handle].sv_id;
+}
+/************************************************
+*
+************************************************/
+int channel_get_power_by_sv_id(int sv_id, uint_32 *prompt_power) {
+  int handle;
+  if(sv_id < 1 || sv_id > 32)
+    return 0;
+  for(handle = 1; handle < channels_used; handle++) {
+    if(channels[handle].sv_id == sv_id)
+      break; 
+  }
+  if(handle == channels_used)
+    return 0;
+  *prompt_power = channels[handle].prompt_power_filtered;
+  return 1;
 }
 /************************************************
 *
@@ -451,7 +518,7 @@ uint_32 channel_tracking(int sv_id) {
 /************************************************
 *
 ************************************************/
-void channel_startup(void (*callback)(int sv_id, int phase)) {
+void channel_startup(int (*callback)(int sv_id, int phase)) {
    phase_callback = callback; 
    generate_atan2_table();
    setup_count_ones();
@@ -469,6 +536,10 @@ void channel_update(uint_32 data) {
      uint_32 new_nco_code;
      uint_32 mixed_sine, mixed_cosine;
      uint_32 s_intermediate_freq=0, c_intermediate_freq=0;
+     if(c->sv_id == 0) {
+       c++;
+       continue;
+     }
   
      fast_IF_nco_mask(c->nco_if, c->step_if, &s_intermediate_freq, &c_intermediate_freq);
      c->nco_if   += c->step_if   * 32;

@@ -146,8 +146,8 @@ int nav_bit_sync(int sv) {
 int nav_subframe_of_week(int sv) {
   if(sv < 0 || sv > MAX_SV)
     return -1;
-  if(!nav_data[sv].nav_time.time_good)
-    return -1;
+//  if(!nav_data[sv].nav_time.time_good)
+//    return -1;
 
   return nav_data[sv].subframe_of_week;
 }
@@ -157,8 +157,6 @@ int nav_subframe_of_week(int sv) {
 *************************************************/
 int nav_week_num(int sv) {
   if(sv < 0 || sv > MAX_SV)
-    return -1;
-  if(!nav_data[sv].nav_time.time_good)
     return -1;
   return nav_data[sv].nav_time.week_num;
 }
@@ -477,6 +475,8 @@ static void nav_save_frame(struct Nav_data *nd) {
   handover_word = unflipped[1];
   nd->raw_navdata.subframe_of_week = (handover_word >> 13) & 0x1FFFF; 
   nd->subframe_of_week             = (handover_word >> 13) & 0x1FFFF; 
+  if(nd->nav_time.week_num >= 0)
+     nd->nav_time.time_good = 1;
   nd->ms_of_frame = 0;
 
   {
@@ -544,7 +544,6 @@ static void nav_save_frame(struct Nav_data *nd) {
       nd->nav_time.correction_f1       = join_bits_s(0,           0, 0, nd->raw_navdata.subframes[1][8],  6,16) * pow(2.0, -43.0);
       nd->nav_time.correction_f0       = join_bits_s(0,           0, 0, nd->raw_navdata.subframes[1][9],  8,22) * pow(2.0, -31.0);
       debug_print_time(nd);
-      nd->nav_time.time_good = 1;
   } else if(frame_type == 2 || frame_type == 3) {  
     unsigned iode2, iode3; 
     /* Frame 2 and 3 share common processsing */
@@ -768,13 +767,18 @@ int nav_clear_bit_errors_count(int sv_id) {
 /*************************************************************************
 * We have a new MS of signal. Work towards decoding a bit of BPSH data
 *************************************************************************/
-static void nav_process(struct Nav_data *nd, uint_8 s) {
+static int nav_process(struct Nav_data *nd, uint_8 s) {
+    int rtn = 1;
     if(nd->raw_navdata.part_in_bit == BIT_LENGTH-1) {
         if(nd->raw_navdata.bit_errors>0)
             nd->raw_navdata.bit_errors--;
         nd->raw_navdata.part_in_bit = 0;
     } else if(s != (nd->raw_navdata.new_word&1)) {
         nav_abandon(nd);
+        if(nd->raw_navdata.bit_errors > 1600) {
+          nd->raw_navdata.bit_errors = 0;
+          rtn = 0;
+        }
         nd->raw_navdata.part_in_bit = 0;
     } else
         nd->raw_navdata.part_in_bit++;
@@ -782,28 +786,29 @@ static void nav_process(struct Nav_data *nd, uint_8 s) {
     if(nd->raw_navdata.part_in_bit == 0) {
         nav_new_bit(nd,s);
     }
+    return rtn;
 }
 
 /*************************************************
 *                                             
 *************************************************/
-void nav_add_bit(int sv, int power) {
+int nav_add_bit(int sv, int power) {
   struct Nav_data *nd;
 
   if(sv < 0 || sv > MAX_SV)
-    return;
+    return 0;
   nd = nav_data + sv;
 
   /* Update the counters so we can reinitialise
-     if we need to while processing the power infor */
+     if we need to while processing the power information */
   if(nd->ms_of_frame == 5999) {
      if(nd->subframe_of_week != -1)
        nd->subframe_of_week++;
      nd->ms_of_frame = 0;
   } else
     nd->ms_of_frame++;
-
-  nav_process(nd, power > 0 ? 1: 0);
+ 
+  return nav_process(nd, power > 0 ? 1: 0);
 }
 
 /*************************************************
