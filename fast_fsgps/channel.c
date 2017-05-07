@@ -9,6 +9,7 @@
 
 #define SHOW_CHANNEL_POWER 0
 #define CALC_NOT_FILTERED  1
+#define EARLY_LATE_WIDTH   14
 struct Channel {
    uint_32 nco_if;
    uint_32 step_if;
@@ -191,7 +192,7 @@ void fast_code_nco(uint_32 *gc_epl, uint_32 nco, uint_32 step) {
     prompt_mask   = masks[phaseP-1021*16];
   }
 
-  phaseE = phaseP + (phaseP < 16*1023-12 ? 12 : 12-16368);
+  phaseE = phaseP + (phaseP < 16*1023-EARLY_LATE_WIDTH ? EARLY_LATE_WIDTH : EARLY_LATE_WIDTH-16368);
   early_code  = gc_epl[phaseE]; 
   early_end_of_repeat  = 0;
   early_mask  = 0;
@@ -200,7 +201,7 @@ void fast_code_nco(uint_32 *gc_epl, uint_32 nco, uint_32 step) {
     early_mask   = masks[phaseE-1021*16];
   } 
 
-  phaseL = phaseP - (phaseP < 12 ? 12-16368 : 12);
+  phaseL = phaseP - (phaseP < EARLY_LATE_WIDTH ? EARLY_LATE_WIDTH-16368 : EARLY_LATE_WIDTH);
   late_code   = gc_epl[phaseL]; 
   late_end_of_repeat   = 0;
   late_mask   = 0;

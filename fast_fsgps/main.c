@@ -161,7 +161,9 @@ int main(int argc, char *argv[]) {
    }
    f = fopen("priority.txt","w+");
    for(q = 0; q < channel_get_count(); q++) { 
-      fprintf(f,"%i\n",channel_get_sv_id(q));
+      int sv = channel_get_sv_id(q);
+      if(sv > 0)
+        fprintf(f,"%i\n",sv);
    }
    fclose(f);
    return 0;
