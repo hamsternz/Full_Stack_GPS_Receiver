@@ -22,7 +22,6 @@ static uint_32 priorities[33];
 void power_callback(int sv_id, uint_32 step_if, uint_32 offset, uint_32 power) {
   if(power > 70000) {
      uint_32 p;
-     printf("Adding %02i, %08x, %08x\n",sv_id, step_if, offset);
      if(channel_get_power_by_sv_id(sv_id, &p)) {
          if(power > p*2) {
            channel_add(sv_id, step_if, offset, 0);
@@ -138,7 +137,7 @@ int main(int argc, char *argv[]) {
      uint_32 data;
      int ch;
      static int processed = 0;
-     if(processed % ((16368000/32)/1) == 0) {
+     if(processed % ((16368000/32)/2) == 0) {
        show_status(processed*32.0/16368000);
      }
      processed++;

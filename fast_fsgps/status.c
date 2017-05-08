@@ -4,21 +4,26 @@
 #include "nav.h"
 #include "channel.h"
 #include "status.h"
+#include "acquire.h"
 
 #define MAX_POS 10
 static const double PI             = 3.1415926535898;
 
 void show_status(double timestamp) {       
-  int c, pos_sv[MAX_POS];
+  int c, pos_sv[MAX_POS], lines;
        int bad_time_detected = 0;
        double lat,lon,alt;
        double pos_x[MAX_POS], pos_y[MAX_POS], pos_z[MAX_POS], pos_t[MAX_POS];
        
        int pos_used = 0;
        double sol_x=0.0, sol_y=0.0, sol_z=0.0, sol_t=0.0;
-       printf("Update at %8.3f\n", timestamp);
+
+       printf("\n");
+       printf("\n");
+       printf("Update at %8.3f    Acquiring %02i\n", timestamp, acquire_current_sv(0));
        printf("Channel status:\n");
        printf("SV, WeekNum, FrameOfWeek,     msOfFrame,  earlyPwr, promptPwr,   latePwr, frame, bitErrors\n");
+       lines = 0;
        for(c = 0; c < channel_get_count(); c++) {
          int sv,frames;
          uint_32 early_power, prompt_power, late_power;
@@ -39,7 +44,12 @@ void show_status(double timestamp) {
              frames & 0x08 ? '4' : '-',
              frames & 0x10 ? '5' : '-',
              nav_get_bit_errors_count(sv)
-         );
+         ); 
+         lines++;
+       }
+       while(lines < 10) {
+         printf("\n");
+         lines++;
        }
        printf("\n");
 
@@ -99,21 +109,25 @@ void show_status(double timestamp) {
          }
        }
 
-       printf("Space Vehicle Positions:   %s\n", bad_time_detected ? "BAD TIME DETECTED - SV position dropped\n" : "");
+       printf("Space Vehicle Positions:   %s\n", bad_time_detected ? "BAD TIME DETECTED - SV position dropped" : "");
        printf("sv,            x,            y,            z,            t\n"); 
        for(c = 0; c < pos_used; c++) {
          printf("%2i, %12.2f, %12.2f, %12.2f, %12.8f\n",pos_sv[c], pos_x[c], pos_y[c], pos_z[c], pos_t[c]);
        }
+       while(c < 8) {
+         printf("\n");
+         c++;
+       }
 
        if(pos_used > 3) { 
          printf("\n");
-         printf("Took %i iterations\n",solve_location(pos_used, pos_x, pos_y, pos_z, pos_t,
-                                 &sol_x,&sol_y,&sol_z,&sol_t));
+         solve_location(pos_used, pos_x, pos_y, pos_z, pos_t, &sol_x,&sol_y,&sol_z,&sol_t);
          solve_LatLonAlt(sol_x, sol_y, sol_z, &lat, &lon, &alt);
 
          printf("Solution ECEF: %12.2f, %12.2f, %12.2f, %11.5f\n", sol_x, sol_y, sol_z, sol_t);
          printf("Solution LLA:  %12.5f, %12.5f, %12.2f\n", lat*180/PI, lon*180/PI, alt);
        }
-       printf("\n");
-       printf("\n");
+       else {
+         printf("\n\n\n");
+       }
      }

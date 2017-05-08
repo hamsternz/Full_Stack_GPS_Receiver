@@ -3,15 +3,10 @@
 #include "gold_codes.h"
 #include "acquire.h"
 
-#define N_BANDS  41
-#define IF_BAND (525*250)   // Bands are 250Hz wide,
+#define N_BANDS  31
+#define IF_BAND (525*333)
 uint_32 ncos_phase[N_BANDS];
 uint_32 ncos_step[N_BANDS] = {
-   0x40000000 -20*IF_BAND,
-   0x40000000 -19*IF_BAND,
-   0x40000000 -18*IF_BAND,
-   0x40000000 -17*IF_BAND,
-   0x40000000 -16*IF_BAND,
    0x40000000 -15*IF_BAND,
    0x40000000 -14*IF_BAND,
    0x40000000 -13*IF_BAND,
@@ -42,12 +37,7 @@ uint_32 ncos_step[N_BANDS] = {
    0x40000000 +12*IF_BAND,
    0x40000000 +13*IF_BAND,
    0x40000000 +14*IF_BAND,
-   0x40000000 +15*IF_BAND,
-   0x40000000 +16*IF_BAND,
-   0x40000000 +17*IF_BAND,
-   0x40000000 +18*IF_BAND,
-   0x40000000 +19*IF_BAND,
-   0x40000000 +20*IF_BAND
+   0x40000000 +15*IF_BAND
 };
 
 static uint_32 *sv_gold_codes;
@@ -90,7 +80,6 @@ void acquire_startup(void) {
 
 int acquire_start(int sv_id, void (*callback_power)(int sv, uint_32 freq, uint_32 offset, uint_32 power), void (*callback_finished)(int sv, uint_32 power)) {
   int i;
-  printf("Attempting to acquire sv %i\n",sv_id);
   power_cb    = callback_power;
   finished_cb = callback_finished;
   current_sv = sv_id;
@@ -305,4 +294,11 @@ void acquire_update(uint_32 samples) {
 int acquire_stop(int sv_id) {
   sv_gold_codes = NULL;
   return -1;
+}
+
+int acquire_current_sv(int index) {
+  if(sv_gold_codes == NULL) {
+    return 0;
+  }
+  return current_sv;
 }

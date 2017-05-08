@@ -318,6 +318,7 @@ static void fast_IF_nco_mask(uint_32 nco, uint_32 step, uint_32 *s, uint_32 *c) 
 ************************************************/
 static void adjust_prompt(struct Channel *ch) {
     int s, c;
+    int i;
     int_8 delta;
     int adjust = 0;
     uint_8 angle;
@@ -368,7 +369,6 @@ static void adjust_prompt(struct Channel *ch) {
       ch->flipped = 1;
       return;
     }
-    int i;
     for(i = 0; i < channels_used; i++) {
        if(channels[i].sv_id == ch->sv_id) 
          break;
@@ -376,7 +376,6 @@ static void adjust_prompt(struct Channel *ch) {
 
     if(i < channels_used)
       channel_remove(i);
-    printf("Removed!");
 }
 
 /************************************************
