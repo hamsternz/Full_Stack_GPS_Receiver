@@ -41,6 +41,7 @@ SOFTWARE.
 
 static uint_32 priorities[33];
 
+static int acquire_launch_highest_priority(int sv_id);
 /*************************************
 *
 *************************************/
@@ -62,21 +63,17 @@ static void power_callback(int sv_id, uint_32 step_if, uint_32 offset, uint_32 p
 *
 *************************************/
 static void finished_callback(int sv_id, uint_32 power) {
-  int max_sv = sv_id;
-  int max_p = 0;
   int i;
 
   /************************
-  * Reset priorities 
+  * Bump up priorities if
+  * power was seen
   ************************/
   if(power > 500000)
-     priorities[sv_id] -= 4;
+     priorities[sv_id] += 24;
   else if(power > 300000)
-     priorities[sv_id] -= 8;
-  else
-     priorities[sv_id] -= 32;
-  if(priorities[sv_id] <0 )
-     priorities[sv_id] = 0;
+     priorities[sv_id] += 28;
+   
 
   /* Bump up everybody */
   for(i = 1; i < 33; i++) {
@@ -87,28 +84,14 @@ static void finished_callback(int sv_id, uint_32 power) {
     else
       priorities[i]++; 
   }
-
-  /* Find the next highest */
-  for(i = 1; i < 33; i++) {
-    sv_id++;  
-    if(sv_id > 32)
-      sv_id = 1;
-    if(!channel_tracking(sv_id)) {
-      if(max_p <  priorities[i]) {
-         max_p =  priorities[i];
-         max_sv = i;
-      }
-    }
-  }
-  acquire_start(max_sv, power_callback, finished_callback);
+  acquire_launch_highest_priority(sv_id);
 }
-
 /************************************************
 *
 ************************************************/
 void schedule_startup(void) {
    FILE *f;
-   int q, start_acq=1;
+   int i, q;
 
    for(q = 0; q < 33; q++) {
      priorities[q] = 32;
@@ -122,15 +105,48 @@ void schedule_startup(void) {
        if(i > 0 && i < 33) {
          printf("Bumping for SV %i\n",i);
          priorities[i] += 32;
-         start_acq = i;
        }
      }
      fclose(f);
      printf("Finished prorities\n");
    }
 
-   acquire_start(start_acq, power_callback, finished_callback);
+   /**********************************
+   * Launch as many acquire sessions as
+   * possible
+   ***********************************/
+   for(i = 0; i < 10; i++) {
+     if(!acquire_launch_highest_priority(1))
+       break;
+   } 
 }
+/************************************************
+*
+************************************************/
+static int acquire_launch_highest_priority(int sv_id) 
+{
+  int max_sv = sv_id;
+  int max_p = 0;
+  int i;
+  /* Find the next highest */
+  for(i = 1; i < 33; i++) {
+    sv_id++;  
+    if(sv_id > 32)
+      sv_id = 1;
+    if(!channel_tracking(sv_id)) {
+      if(max_p <  priorities[i]) {
+         max_p =  priorities[i];
+         max_sv = i;
+      }
+    }
+  }
+  /* Drop 32 priority places before start */
+  priorities[max_sv] -= 32;
+  if(priorities[max_sv] <0 )
+     priorities[max_sv] = 0;
+  return acquire_start(max_sv, power_callback, finished_callback);
+}
+
 /************************************************
 *
 ************************************************/
