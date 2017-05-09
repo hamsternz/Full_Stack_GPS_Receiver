@@ -79,7 +79,7 @@ int main(int argc, char *argv[]) {
      uint_32 data;
      int ch;
      static int processed = 0;
-     if(processed % ((16368000/32)/1) == 0) {
+     if(processed % ((16368000/32)/10) == 0) {
        show_status(processed*32.0/16368000);
      }
      processed++;

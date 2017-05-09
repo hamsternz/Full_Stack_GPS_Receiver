@@ -46,7 +46,7 @@ static int launch_highest_priority(int sv_id);
 *
 *************************************/
 static void power_callback(int sv_id, uint_32 step_if, uint_32 offset, uint_32 power) {
-  if(power > 80000) {
+  if(power > 75000) {
      uint_32 p;
      if(channel_get_power_by_sv_id(sv_id, &p)) {
        if(power > p*2) {
@@ -69,7 +69,7 @@ static void finished_callback(int sv_id, uint_32 power) {
   * Bump up priorities if
   * power was seen
   ************************/
-  if(power > 800000)
+  if(power > 750000)
      priorities[sv_id] += 16;
   else if(power > 400000)
      priorities[sv_id] += 8;

@@ -31,7 +31,7 @@ SOFTWARE.
 #include "gold_codes.h"
 #include "acquire.h"
 
-#define N_BANDS  31
+#define N_BANDS  21
 #define N_PARALLEL 2
 
 uint_32 ncos_phase[N_BANDS];
@@ -52,6 +52,9 @@ struct Acq_state {
 };
 
 static struct Acq_state states[N_PARALLEL];
+uint_32 scan_value;
+uint_32 scan_max   = 0x40000000+253*5000;
+uint_32 scan_span  = 2*253*5000;
 
 static unsigned char ones_lookup[256];
 static void setup_count_ones(void) {
@@ -82,6 +85,7 @@ void acquire_startup(void) {
   for(i = 0; i < N_BANDS; i++) {
     ncos_step[i] = 0x40000000 + (i-N_BANDS/2)*if_band;
   }
+  scan_value = if_band * 4 / 11;
   setup_count_ones();
 }
 
@@ -248,33 +252,9 @@ void acquire_update(uint_32 samples) {
         if(p > states[s].max_power) {
           states[s].max_power  = p;
           states[s].max_step   = ncos_step[i];
-          if(i == 0) {
-            states[s].max_step   = ncos_step[i]*3/4 + ncos_step[i+1]/4;
-          } else if (i == N_BANDS-1) {
-            states[s].max_step   = ncos_step[i]*3/4 + ncos_step[i-1]/4;
-          } else {
-#if 0
-          uint_32 a,b;
-          a = ones_s[i-1]*ones_s[i-1]+ones_c[i-1]*ones_c[i-1];
-          b = ones_s[i+1]*ones_s[i+1]+ones_c[i+1]*ones_c[i+1];
 
-          if(a > b) {
-             if( p/4 > a)
-               max_step   = ncos_step[i]/2 + ncos_step[i-1]/2;
-             else
-               max_step   = ncos_step[i]*3/4 + ncos_step[i-1]/4;
-          }
-
-          if(a < b) {
-             if( p/4 > b)
-               max_step   = ncos_step[i]/2 + ncos_step[i+1]/2;
-             else
-               max_step   = ncos_step[i]*3/4 + ncos_step[i+1]/4;
-          }
-#endif
-            if(states[s].power_cb) {
-              states[s].power_cb(states[s].current_sv,states[s].max_step,0,states[s].max_power/4);
-            }
+          if(states[s].power_cb) {
+            states[s].power_cb(states[s].current_sv,states[s].max_step,0,states[s].max_power/4);
           }
           states[s].max_offset = 0;
         }
@@ -288,9 +268,14 @@ void acquire_update(uint_32 samples) {
       /* Finish after 1023 tries */
       if(states[s].tries == 1023)
       {
-       states[s].sv_gold_codes = NULL;
-       if(states[s].finished_cb)
+        states[s].sv_gold_codes = NULL;
+        if(states[s].finished_cb)
           states[s].finished_cb(states[s].current_sv, states[s].max_power);
+        for(i = 0; i < N_BANDS; i++) {
+          ncos_step[i] += scan_value; 
+          if(ncos_step[i] > scan_max)
+            ncos_step[i] -= scan_span;
+        }
       }
       else
          states[s].tries++;
