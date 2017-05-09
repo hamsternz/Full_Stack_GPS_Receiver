@@ -31,42 +31,10 @@ SOFTWARE.
 #include "gold_codes.h"
 #include "acquire.h"
 
-#define N_BANDS  31
-#define IF_BAND (525*333)
+#define N_BANDS  51
+
 uint_32 ncos_phase[N_BANDS];
-uint_32 ncos_step[N_BANDS] = {
-   0x40000000 -15*IF_BAND,
-   0x40000000 -14*IF_BAND,
-   0x40000000 -13*IF_BAND,
-   0x40000000 -12*IF_BAND,
-   0x40000000 -11*IF_BAND,
-   0x40000000 -10*IF_BAND,
-   0x40000000 - 9*IF_BAND,
-   0x40000000 - 8*IF_BAND,
-   0x40000000 - 7*IF_BAND,
-   0x40000000 - 6*IF_BAND,
-   0x40000000 - 5*IF_BAND,
-   0x40000000 - 3*IF_BAND,
-   0x40000000 - 4*IF_BAND,
-   0x40000000 - 2*IF_BAND,
-   0x40000000 - 1*IF_BAND,
-   0x40000000 + 0*IF_BAND,
-   0x40000000 + 1*IF_BAND,
-   0x40000000 + 2*IF_BAND,
-   0x40000000 + 3*IF_BAND,
-   0x40000000 + 4*IF_BAND,
-   0x40000000 + 5*IF_BAND,
-   0x40000000 + 6*IF_BAND,
-   0x40000000 + 7*IF_BAND,
-   0x40000000 + 8*IF_BAND,
-   0x40000000 + 8*IF_BAND,
-   0x40000000 +10*IF_BAND,
-   0x40000000 +11*IF_BAND,
-   0x40000000 +12*IF_BAND,
-   0x40000000 +13*IF_BAND,
-   0x40000000 +14*IF_BAND,
-   0x40000000 +15*IF_BAND
-};
+uint_32 ncos_step[N_BANDS];
 
 static uint_32 *sv_gold_codes;
 static uint_32 code_phase;
@@ -103,6 +71,11 @@ static int count_ones(uint_32 a) {
 }
 
 void acquire_startup(void) {
+  int if_band = 525*5000/(N_BANDS/2), i;
+
+  for(i = 0; i < N_BANDS; i++) {
+    ncos_step[i] = 0x40000000 + (i-N_BANDS/2)*if_band;
+  }
   setup_count_ones();
 }
 
