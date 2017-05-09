@@ -31,20 +31,28 @@ SOFTWARE.
 #include "gold_codes.h"
 #include "acquire.h"
 
-#define N_BANDS  51
+#define N_BANDS  31
+#define N_PARALLEL 2
 
 uint_32 ncos_phase[N_BANDS];
 uint_32 ncos_step[N_BANDS];
 
-static uint_32 *sv_gold_codes;
-static uint_32 code_phase;
-static uint_32 ones_s[N_BANDS];
-static uint_32 ones_c[N_BANDS];
-static uint_32 tries;
-static uint_32 max_offset;
-static uint_32 max_power;
-static uint_32 max_step;
-static uint_32 current_sv;
+struct Acq_state {
+  uint_32 *sv_gold_codes;
+  uint_32 code_phase;
+  uint_32 ones_s[N_BANDS];
+  uint_32 ones_c[N_BANDS];
+  uint_32 tries;
+  uint_32 max_offset;
+  uint_32 max_power;
+  uint_32 max_step;
+  uint_32 current_sv;
+  void (*finished_cb)(int sv, uint_32 power);
+  void (*power_cb)(int sv, uint_32 freq, uint_32 offset, uint_32 power);
+};
+
+static struct Acq_state states[N_PARALLEL];
+
 static unsigned char ones_lookup[256];
 static void setup_count_ones(void) {
   int i;
@@ -57,8 +65,6 @@ static void setup_count_ones(void) {
   }
 }
 
-void (*finished_cb)(int sv, uint_32 power);
-void (*power_cb)(int sv, uint_32 freq, uint_32 offset, uint_32 power);
 
 static int count_ones(uint_32 a) {
   int rtn;
@@ -80,18 +86,25 @@ void acquire_startup(void) {
 }
 
 int acquire_start(int sv_id, void (*callback_power)(int sv, uint_32 freq, uint_32 offset, uint_32 power), void (*callback_finished)(int sv, uint_32 power)) {
-  int i;
-  power_cb    = callback_power;
-  finished_cb = callback_finished;
-  current_sv = sv_id;
-  sv_gold_codes = &(gold_codes_32_cycles[sv_id][0]);
-  for(i = 0; i < N_BANDS; i++) {
-    ones_s[i] = 0;
-    ones_c[i] = 0;
+  int i,s;
+  for(s = 0; s < N_PARALLEL; s++) {
+    if(states[s].sv_gold_codes == NULL)
+      break;
   }
-  tries = 0;
-  max_power = 0;
-  return 0;
+  if(s == N_PARALLEL)
+    return 0;
+
+  states[s].power_cb    = callback_power;
+  states[s].finished_cb = callback_finished;
+  states[s].current_sv = sv_id;
+  states[s].sv_gold_codes = &(gold_codes_32_cycles[sv_id][0]);
+  for(i = 0; i < N_BANDS; i++) {
+    states[s].ones_s[i] = 0;
+    states[s].ones_c[i] = 0;
+  }
+  states[s].tries = 0;
+  states[s].max_power = 0;
+  return 1;
 }
 /************************************************
 *
@@ -202,36 +215,44 @@ static void fast_IF_nco_mask(uint_32 nco, uint_32 step, uint_32 *s, uint_32 *c)
 
 void acquire_update(uint_32 samples) {
   int i;
-  if(!sv_gold_codes)
-     return;
+  int s;
+
+  uint_32 lo_s[N_BANDS], lo_c[N_BANDS];
+
+  for(i = 0; i < N_BANDS; i++) {
+    fast_IF_nco_mask(ncos_phase[i], ncos_step[i], lo_s+i, lo_c+i);
+  }
+  for(s = 0; s < N_PARALLEL; s++) {
+    if(!states[s].sv_gold_codes)
+     continue;
 
   /* Advance two code chips */
-  if(max_offset < 2)
-    max_offset += 1023-2;
-  else
-    max_offset -= 2;
+    if(states[s].max_offset < 2)
+      states[s].max_offset += 1023-2;
+    else
+      states[s].max_offset -= 2;
 
-  if(code_phase == 1023) {
-    code_phase = 0;
+    if(states[s].code_phase == 1023) {
+      states[s].code_phase = 0;
     /* what we do when we have completly processed two cycles
        of the Gold Code */
-    for(i = 0; i < N_BANDS; i++) {
-      ones_s[i] -= 16368;
-      ones_c[i] -= 16368;
-    }
+      for(i = 0; i < N_BANDS; i++) {
+        states[s].ones_s[i] -= 16368;
+        states[s].ones_c[i] -= 16368;
+      }
 
-    for(i = 0; i < N_BANDS; i++) {
-      uint_32 p;
+      for(i = 0; i < N_BANDS; i++) {
+        uint_32 p;
       /* See if this is the highest power so far */
-      p = ones_s[i]*ones_s[i]+ones_c[i]*ones_c[i];
-      if(p > max_power) {
-        max_power  = p;
-        max_step   = ncos_step[i];
-        if(i == 0) {
-          max_step   = ncos_step[i]*3/4 + ncos_step[i+1]/4;
-        } else if (i == N_BANDS-1) {
-          max_step   = ncos_step[i]*3/4 + ncos_step[i-1]/4;
-        } else {
+        p = states[s].ones_s[i]*states[s].ones_s[i]+states[s].ones_c[i]*states[s].ones_c[i];
+        if(p > states[s].max_power) {
+          states[s].max_power  = p;
+          states[s].max_step   = ncos_step[i];
+          if(i == 0) {
+            states[s].max_step   = ncos_step[i]*3/4 + ncos_step[i+1]/4;
+          } else if (i == N_BANDS-1) {
+            states[s].max_step   = ncos_step[i]*3/4 + ncos_step[i-1]/4;
+          } else {
 #if 0
           uint_32 a,b;
           a = ones_s[i-1]*ones_s[i-1]+ones_c[i-1]*ones_c[i-1];
@@ -251,40 +272,40 @@ void acquire_update(uint_32 samples) {
                max_step   = ncos_step[i]*3/4 + ncos_step[i+1]/4;
           }
 #endif
-          if(power_cb)
-            power_cb(current_sv,max_step,0,max_power/4);
+            if(states[s].power_cb) {
+              states[s].power_cb(states[s].current_sv,states[s].max_step,0,states[s].max_power/4);
+            }
+          }
+          states[s].max_offset = 0;
         }
-        max_offset = 0;
       }
-    }
 
-    for(i = 0; i < N_BANDS; i++) {
-      ones_s[i] = 0;
-      ones_c[i] = 0;
+      for(i = 0; i < N_BANDS; i++) {
+        states[s].ones_s[i] = 0;
+        states[s].ones_c[i] = 0;
+      }
+
+      /* Finish after 1023 tries */
+      if(states[s].tries == 1023)
+      {
+       states[s].sv_gold_codes = NULL;
+       if(states[s].finished_cb)
+          states[s].finished_cb(states[s].current_sv, states[s].max_power);
+      }
+      else
+         states[s].tries++;
+    } else {
+      uint_32 c = states[s].sv_gold_codes[states[s].code_phase*16];
+      /* Normal progress */
+      for(i = 0; i < N_BANDS; i++) {
+        states[s].ones_s[i] += count_ones(samples ^ c ^ lo_s[i]);
+        states[s].ones_c[i] += count_ones(samples ^ c ^ lo_c[i]);
+      }
+      if(states[s].code_phase == 1022)
+        states[s].code_phase += 2-1023; 
+      else
+        states[s].code_phase += 2;
     }
-#if 1
-    if(tries == 1023)
-    {
-       sv_gold_codes = NULL;
-       if(finished_cb)
-          finished_cb(current_sv, max_power);
-    }
-    else
-       tries++;
-#endif
-  } else {
-    uint_32 c = sv_gold_codes[code_phase*16];
-    /* Normal progress */
-    for(i = 0; i < N_BANDS; i++) {
-      uint_32 lo_s, lo_c;
-      fast_IF_nco_mask(ncos_phase[i], ncos_step[i], &lo_s, &lo_c);
-      ones_s[i] += count_ones(samples ^ c ^ lo_s);
-      ones_c[i] += count_ones(samples ^ c ^ lo_c);
-    }
-    if(code_phase == 1022)
-      code_phase += 2-1023; 
-    else
-      code_phase += 2;
   }
   
   for(i = 0; i < N_BANDS; i++) {
@@ -293,13 +314,28 @@ void acquire_update(uint_32 samples) {
 }
 
 int acquire_stop(int sv_id) {
-  sv_gold_codes = NULL;
+  int s;
+  for(s = 0; s < N_PARALLEL; s++) {
+    if(states[s].current_sv == sv_id)
+      states[s].sv_gold_codes = NULL;
+  }
   return -1;
 }
 
 int acquire_current_sv(int index) {
-  if(sv_gold_codes == NULL) {
+  if(index >= N_PARALLEL)
+    return -1;
+  if(states[index].sv_gold_codes == NULL) {
     return 0;
   }
-  return current_sv;
+  return states[index].current_sv;
+}
+
+int acquiring(int sv_id) {
+  int s;
+  for(s = 0; s < N_PARALLEL; s++) {
+    if(states[s].sv_gold_codes && states[s].current_sv == sv_id)
+      return 1;
+  }
+  return 0;
 }

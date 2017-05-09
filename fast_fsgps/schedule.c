@@ -39,20 +39,20 @@ SOFTWARE.
 #include "acquire.h"
 #include "status.h"
 
-static uint_32 priorities[33];
+static int_32 priorities[33];
 
-static int acquire_launch_highest_priority(int sv_id);
+static int launch_highest_priority(int sv_id);
 /*************************************
 *
 *************************************/
 static void power_callback(int sv_id, uint_32 step_if, uint_32 offset, uint_32 power) {
-  if(power > 70000) {
+  if(power > 80000) {
      uint_32 p;
      if(channel_get_power_by_sv_id(sv_id, &p)) {
-         if(power > p*2) {
-           channel_add(sv_id, step_if, offset, 0);
-           nav_clear_bit_errors_count(sv_id);
-         }
+       if(power > p*2) {
+          channel_add(sv_id, step_if, offset, 0);
+          nav_clear_bit_errors_count(sv_id);
+       }
      } else {
        channel_add(sv_id, step_if, offset, 0);
      }
@@ -64,27 +64,27 @@ static void power_callback(int sv_id, uint_32 step_if, uint_32 offset, uint_32 p
 *************************************/
 static void finished_callback(int sv_id, uint_32 power) {
   int i;
-
+#if 1
   /************************
   * Bump up priorities if
   * power was seen
   ************************/
-  if(power > 500000)
-     priorities[sv_id] += 24;
-  else if(power > 300000)
-     priorities[sv_id] += 28;
-   
+  if(power > 800000)
+     priorities[sv_id] += 16;
+  else if(power > 400000)
+     priorities[sv_id] += 8;
+#endif   
 
   /* Bump up everybody */
   for(i = 1; i < 33; i++) {
-    if(channel_tracking(i) && nav_get_bit_errors_count(i) < 10)
+    if(channel_tracking_by_sv_id(i) && nav_get_bit_errors_count(i) < 10)
       priorities[i]=0; 
     else if(nav_get_bit_errors_count(i) > 500)
       priorities[i]+=4; 
     else
       priorities[i]++; 
   }
-  acquire_launch_highest_priority(sv_id);
+  launch_highest_priority(sv_id);
 }
 /************************************************
 *
@@ -116,27 +116,29 @@ void schedule_startup(void) {
    * possible
    ***********************************/
    for(i = 0; i < 10; i++) {
-     if(!acquire_launch_highest_priority(1))
+     if(!launch_highest_priority(1))
        break;
    } 
 }
 /************************************************
 *
 ************************************************/
-static int acquire_launch_highest_priority(int sv_id) 
+static int launch_highest_priority(int sv_id) 
 {
   int max_sv = sv_id;
-  int max_p = 0;
+  int max_p = -1;
   int i;
   /* Find the next highest */
   for(i = 1; i < 33; i++) {
     sv_id++;  
     if(sv_id > 32)
       sv_id = 1;
-    if(!channel_tracking(sv_id)) {
-      if(max_p <  priorities[i]) {
-         max_p =  priorities[i];
-         max_sv = i;
+    if(!channel_tracking_by_sv_id(sv_id)) {
+      if(!acquiring(sv_id)) {
+        if(max_p <=  priorities[sv_id]) {
+           max_p =  priorities[sv_id];
+           max_sv = sv_id;
+        }
       }
     }
   }
@@ -144,6 +146,12 @@ static int acquire_launch_highest_priority(int sv_id)
   priorities[max_sv] -= 32;
   if(priorities[max_sv] <0 )
      priorities[max_sv] = 0;
+#if 0
+  for(i = 0; i < 33; i++) {
+   printf("%02i ", priorities[i]);
+  }
+  printf("\n");
+#endif
   return acquire_start(max_sv, power_callback, finished_callback);
 }
 

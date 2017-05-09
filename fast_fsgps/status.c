@@ -39,7 +39,7 @@ static const double PI             = 3.1415926535898;
 
 void show_status(double timestamp) {       
   int c, pos_sv[MAX_POS], lines;
-       int bad_time_detected = 0;
+       int bad_time_detected = 0,i;
        double lat,lon,alt;
        double pos_x[MAX_POS], pos_y[MAX_POS], pos_z[MAX_POS], pos_t[MAX_POS];
        
@@ -48,7 +48,14 @@ void show_status(double timestamp) {
 
        printf("\n");
        printf("\n");
-       printf("Update at %8.3f    Acquiring %02i\n", timestamp, acquire_current_sv(0));
+       printf("Update at %8.3f    Acquiring:", timestamp);
+       for(i = 0; i < 32; i++) {
+          int sv;
+          sv =  acquire_current_sv(i);
+          if(sv > 0)
+            printf(" %02i",sv);
+       }
+       printf("\n");
        printf("Channel status:\n");
        printf("SV, WeekNum, FrameOfWeek,     msOfFrame,  earlyPwr, promptPwr,   latePwr, frame, bitErrors\n");
        lines = 0;
@@ -75,7 +82,7 @@ void show_status(double timestamp) {
          ); 
          lines++;
        }
-       while(lines < 10) {
+       while(lines < 16) {
          printf("\n");
          lines++;
        }
@@ -104,6 +111,8 @@ void show_status(double timestamp) {
          raw_time /= 1000;
          if(!nav_calc_corrected_time(sv,raw_time, pos_t+pos_used))
            continue;
+         if(pos_t[pos_used] < 0 || pos_t[pos_used] >= 7*24*3600)
+           continue;
          if(!nav_calc_position(sv,pos_t[pos_used], pos_x+pos_used, pos_y+pos_used, pos_z+pos_used))
            continue;
          pos_sv[pos_used] = sv;
@@ -128,10 +137,11 @@ void show_status(double timestamp) {
          if(diff/n > 0.1) {
            bad_time_detected = 1;
            for(c2 = c; c < pos_used-1; c++) {
-             pos_t[c2] = pos_t[c2+1];
-             pos_x[c2] = pos_x[c2+1];
-             pos_y[c2] = pos_y[c2+1];
-             pos_z[c2] = pos_z[c2+1];
+             pos_sv[c2] = pos_sv[c2+1];
+             pos_t[c2]  = pos_t[c2+1];
+             pos_x[c2]  = pos_x[c2+1];
+             pos_y[c2]  = pos_y[c2+1];
+             pos_z[c2]  = pos_z[c2+1];
            }
            pos_used--; 
          }

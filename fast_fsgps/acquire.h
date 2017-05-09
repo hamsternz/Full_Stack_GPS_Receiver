@@ -33,3 +33,4 @@ int acquire_start(int sv_id,
 void acquire_update(uint_32 s);
 int acquire_current_sv(int index);
 int acquire_stop(int sv_id);
+int acquiring(int sv_id);

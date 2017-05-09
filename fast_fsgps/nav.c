@@ -146,8 +146,6 @@ int nav_bit_sync(int sv) {
 int nav_subframe_of_week(int sv) {
   if(sv < 0 || sv > MAX_SV)
     return -1;
-//  if(!nav_data[sv].nav_time.time_good)
-//    return -1;
 
   return nav_data[sv].subframe_of_week;
 }
@@ -741,12 +739,22 @@ static void nav_new_bit(struct Nav_data *nd, uint_8 s) {
 * unexpected BPSK phase flip
 *************************************************************************/
 static void nav_abandon(struct Nav_data *nd) {
-//    printf("%2i: Abandon - %5i errors\n", nd->sv_id, nd->raw_navdata.bit_errors);
+#if 0
+    printf("%2i: Abandon - %5i errors\n", nd->sv_id, nd->raw_navdata.bit_errors);
+#endif
     nd->raw_navdata.valid_bits = 0;
     nd->raw_navdata.synced = 0;
     nd->raw_navdata.bit_errors++;
 }
 
+/*************************************************************************
+*
+*************************************************************************/
+void nav_remove(int sv_id) {
+  if(sv_id <1 || sv_id > 32)
+    return;
+   nav_data[sv_id].subframe_of_week = -1;
+}
 /*************************************************************************
 *
 *************************************************************************/

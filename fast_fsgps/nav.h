@@ -31,6 +31,7 @@ int nav_bit_sync(int sv);
 int nav_week_num(int sv);
 int nav_subframe_of_week(int sv);
 int nav_ms_of_frame(int sv);
+void nav_remove(int sv);
 int nav_known_frames(int sv);
 int nav_get_bit_errors_count(int sv);
 int nav_clear_bit_errors_count(int sv);

@@ -35,7 +35,7 @@ uint_32 channel_get_nco_limit(void);
 int channel_disable_track(int handle);
 int channel_enable_track(int handle);
 uint_32 channel_get_sv_id(int handle);
-uint_32 channel_tracking(int sv_id);
+uint_32 channel_tracking_by_sv_id(int sv_id);
 uint_32 channel_get_nco_phase(int handle);
 int  channel_remove(int handle);
 void channel_update(uint_32 data);

@@ -34,6 +34,7 @@ SOFTWARE.
 #include "types.h"
 #include "gold_codes.h"
 #include "channel.h"
+#include "nav.h"
 
 #define SHOW_CHANNEL_POWER 0
 #define CALC_NOT_FILTERED  1
@@ -140,7 +141,7 @@ static int late_end_of_repeat;
 *
 *********************************************************************/
 int channel_remove(int handle) {
-   if(handle > channels_used-1)
+   if(handle > channels_used-1 || handle < 0)
       return 0;
    channels[handle].sv_id = 0;
    return 1;
@@ -402,8 +403,10 @@ static void adjust_prompt(struct Channel *ch) {
          break;
     }
 
-    if(i < channels_used)
+    if(i < channels_used) {
+      nav_remove(ch->sv_id);
       channel_remove(i);
+    }
 }
 
 /************************************************
@@ -428,7 +431,7 @@ int  channel_add(int_8 sv_id, uint_32 step_if, uint_32 nco_code, int_32 code_tun
   } 
 
   for(i = 0; i < channels_used; i++ ) {
-    if(channels[i].sv_id == sv_id) {
+    if(channels[i].sv_id == 0) {
       channels[i].sv_id     = sv_id;
       channels[i].step_if          = step_if;
       channels[i].step_if_starting = step_if;
@@ -491,7 +494,7 @@ int channel_get_power_by_sv_id(int sv_id, uint_32 *prompt_power) {
   int handle;
   if(sv_id < 1 || sv_id > 32)
     return 0;
-  for(handle = 1; handle < channels_used; handle++) {
+  for(handle = 0; handle < channels_used; handle++) {
     if(channels[handle].sv_id == sv_id)
       break; 
   }
@@ -534,7 +537,7 @@ uint_32 channel_get_nco_limit(void) {
 /************************************************
 *
 ************************************************/
-uint_32 channel_tracking(int sv_id) {
+uint_32 channel_tracking_by_sv_id(int sv_id) {
   int i;
   for(i = 0; i < channels_used; i++) {
      if(channels[i].sv_id == sv_id)
