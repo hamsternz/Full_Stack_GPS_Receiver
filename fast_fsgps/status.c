@@ -37,6 +37,12 @@ SOFTWARE.
 #define MAX_POS 10
 static const double PI             = 3.1415926535898;
 
+#define AVERAGE_LEN 21
+static double average_lat[AVERAGE_LEN];
+static double average_lon[AVERAGE_LEN];
+static double average_alt[AVERAGE_LEN];
+static int average_index = -1;
+
 void show_status(double timestamp) {       
   int c, pos_sv[MAX_POS], lines;
        int bad_time_detected = 0,i;
@@ -163,7 +169,37 @@ void show_status(double timestamp) {
          solve_LatLonAlt(sol_x, sol_y, sol_z, &lat, &lon, &alt);
 
          printf("Solution ECEF: %12.2f, %12.2f, %12.2f, %11.5f\n", sol_x, sol_y, sol_z, sol_t);
-         printf("Solution LLA:  %12.5f, %12.5f, %12.2f\n", lat*180/PI, lon*180/PI, alt);
+         printf("Solution LLA:  %12.7f, %12.7f, %12.2f\n", lat*180/PI, lon*180/PI, alt);
+         if(average_index == -1) {    
+             int i;
+             for(i = 0; i < AVERAGE_LEN; i++) {
+                average_lat[i] = lat;
+                average_lon[i] = lon;
+                average_alt[i] = alt;
+             }
+             average_index = 0;
+         } else {
+             int i;
+             average_lat[average_index] = lat;
+             average_lon[average_index] = lon;
+             average_alt[average_index] = alt;
+             average_index++;
+             if(average_index == AVERAGE_LEN) average_index = 0;
+
+             lat = lon = alt = 0.0;
+             for(i = 0; i < AVERAGE_LEN; i++) {
+                lat += average_lat[i];
+                lon += average_lon[i];
+                alt += average_alt[i];
+             }
+             lat /= AVERAGE_LEN;
+             lon /= AVERAGE_LEN;
+             alt /= AVERAGE_LEN;
+ 
+         }
+         printf("Average LLA:   %12.7f, %12.7f, %12.2f\n", lat*180/PI, lon*180/PI, alt);
+              
+ 
        }
        else {
          printf("\n\n\n");

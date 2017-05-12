@@ -1,0 +1,31 @@
+NET "mclk"         LOC = "B8"  | IOSTANDARD=LVTTL | PERIOD=20ns;
+
+NET "epp_astb"     LOC = "V14" | IOSTANDARD=LVTTL;
+NET "epp_dstb"     LOC = "U14" | IOSTANDARD=LVTTL;
+NET "epp_wait"     LOC = "N9"  | IOSTANDARD=LVTTL;
+NET "epp_wr"       LOC = "V16" | IOSTANDARD=LVTTL;
+
+NET "epp_data<0>"  LOC = "R14" | IOSTANDARD=LVTTL;
+NET "epp_data<1>"  LOC = "R13" | IOSTANDARD=LVTTL;
+NET "epp_data<2>"  LOC = "P13" | IOSTANDARD=LVTTL;
+NET "epp_data<3>"  LOC = "T12" | IOSTANDARD=LVTTL;
+NET "epp_data<4>"  LOC = "N11" | IOSTANDARD=LVTTL;
+NET "epp_data<5>"  LOC = "R11" | IOSTANDARD=LVTTL;
+NET "epp_data<6>"  LOC = "P10" | IOSTANDARD=LVTTL;
+NET "epp_data<7>"  LOC = "R10" | IOSTANDARD=LVTTL;
+
+NET "led<0>"  LOC = "J14" | IOSTANDARD=LVCMOS18;
+NET "led<1>"  LOC = "J15" | IOSTANDARD=LVCMOS18;
+NET "led<2>"  LOC = "K15" | IOSTANDARD=LVCMOS18;
+NET "led<3>"  LOC = "K14" | IOSTANDARD=LVCMOS18;
+NET "led<4>"  LOC = "E17" | IOSTANDARD=LVCMOS18;
+NET "led<5>"  LOC = "P15" | IOSTANDARD=LVCMOS18;
+NET "led<6>"  LOC = "F4"  | IOSTANDARD=LVCMOS18;
+NET "led<7>"  LOC = "R4"  | IOSTANDARD=LVCMOS18;
+
+############################
+### JA(0) to JA(2)
+############################
+NET "gps_clk"      LOC = "L15"  | IOSTANDARD=LVCMOS18;
+NET "gps_sgn"      LOC = "K12"  | IOSTANDARD=LVCMOS18;
+NET "gps_mag"      LOC = "L17"  | IOSTANDARD=LVCMOS18;

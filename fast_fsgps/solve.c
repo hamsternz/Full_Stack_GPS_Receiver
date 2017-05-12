@@ -163,7 +163,7 @@ int solve_location(int chans,
         *sol_t += dt;
     }
     if(sqrt((*sol_x)*(*sol_x)+(*sol_y)*(*sol_y)+(*sol_z)*(*sol_z)) > 6373133)
-      sol_x = sol_y = *sol_z = 0.0;
+      *sol_x = *sol_y = *sol_z = 0.0;
     return j;
 }
 

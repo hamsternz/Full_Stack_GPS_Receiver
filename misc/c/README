@@ -1,0 +1,4 @@
+Here are misc C programs used to grab the raw samples from
+the GPS RF frontend. It requires that the upper two bits of
+the data stream are a sequence number (used to check for buffer
+overuns or underflows 

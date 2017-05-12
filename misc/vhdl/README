@@ -1,0 +1,5 @@
+This is the VHDL for the design that takes serial data from the GPS RF frontend and converts them into bytes for the FPGA's EPP-like interface.
+
+I've added a two-bit sequence numbers, so I've got a one in four chance of detecting buffer overruns when the data is recevied.
+
+You will need to add an IP block FIFO for this design to work
