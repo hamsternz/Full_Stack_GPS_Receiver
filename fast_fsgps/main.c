@@ -74,13 +74,13 @@ int main(int argc, char *argv[]) {
    acquire_startup();
    channel_startup(nav_add_bit);
    schedule_startup();
-
+   status_startup();
    while(1) {
      uint_32 data;
      int ch;
      static int processed = 0;
-     if(processed % ((16368000/32)/100) == 0) {
-       show_status(processed*32.0/16368000);
+     if(processed % ((16368000/32)/10) == 0) {
+       status_show(processed*32.0/16368000);
      }
      processed++;
 
@@ -100,7 +100,7 @@ int main(int argc, char *argv[]) {
      acquire_update(data);  /* This has to go first ! */
      channel_update(data);
    }
+   status_shutdown();
    schedule_shutdown();
-
    return 0;
 }

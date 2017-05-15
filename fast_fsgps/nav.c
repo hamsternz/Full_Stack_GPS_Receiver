@@ -35,6 +35,7 @@ SOFTWARE.
 #include <time.h>
 #include "types.h"
 #include "nav.h"
+#include "status.h"
 
 #define MAX_SV 33
 
@@ -56,6 +57,7 @@ static const int    TIME_EPOCH     = 315964800;
 struct Raw_navdata {
   uint_32 seq;
   uint_8  synced;
+  uint_8  bit_align_certainty;
   uint_32 subframe_of_week;
 
   /* Last 32 bits of data received*/
@@ -73,6 +75,7 @@ struct Raw_navdata {
   /* Complete NAV data frames (only 1 to 5 is used, zero is empty) */
   uint_8  valid_subframe[6];
   uint_32 subframes[6][10];  
+   
 };
 
 /*************************************************
@@ -235,7 +238,7 @@ int nav_calc_corrected_time(int sv_id, double raw_t, double *t) {
     return 0;
 
   if(!nav_data[sv_id].nav_time.time_good)
-    return -1;
+    return 0;
 
   nd = nav_data+sv_id;
 
@@ -397,6 +400,8 @@ static signed  join_bits_s(int val1, int offset1, int len1, int val2, int offset
 ******************************************************************************
 *****************************************************************************/
 static void debug_print_orbit(struct Nav_data *nd) {
+  if(!status_printf_ok())
+    return;
   printf("\nOrbit parameters for SV %i:\n",   nd->sv_id);
   printf("iode      %02X\n",                  nd->nav_orbit.iode);
   printf("double M0        = %2.30g;\n", nd->nav_orbit.mean_motion_at_ephemeris);
@@ -424,6 +429,8 @@ void debug_print_time(struct Nav_data *nd) {
   struct tm  ts;
   char       buf[80];
   time_t     timestamp;
+  if(!status_printf_ok())
+    return;
 
   printf("\nTime parameters for SV %i:\n",   nd->sv_id);
   printf("Week No    %i\n", nd->nav_time.week_num);
@@ -767,6 +774,13 @@ static int nav_process(struct Nav_data *nd, uint_8 s) {
     /* We are expecting a possible transition on this cycle */
     if(nd->raw_navdata.bit_errors>0)
       nd->raw_navdata.bit_errors--;
+ 
+    /* Are we more certain of this alignment? (does the bit change?)  */
+    if(s != (nd->raw_navdata.new_word&1)) {
+       if(nd->raw_navdata.bit_align_certainty < 10) {
+         nd->raw_navdata.bit_align_certainty++;
+       }
+    }
     nd->raw_navdata.part_in_bit = 0;
     nav_new_bit(nd,s);
     return 1;
@@ -782,14 +796,18 @@ static int nav_process(struct Nav_data *nd, uint_8 s) {
 #if 0
   printf("%2i: Abandon - %5i errors\n", nd->sv_id, nd->raw_navdata.bit_errors);
 #endif
-  nd->raw_navdata.part_in_bit = 0;
   nd->raw_navdata.valid_bits = 0;
-  nd->raw_navdata.synced = 0;
-  nav_new_bit(nd,s);
+  if(nd->raw_navdata.bit_align_certainty == 0) {
+    nd->raw_navdata.part_in_bit = 0;
+    nd->raw_navdata.synced = 0;
+    nav_new_bit(nd,s);
+  } else {
+    nd->raw_navdata.bit_align_certainty--;
+  }
 
   /* See if we have to pass the error up to the channel */
   nd->raw_navdata.bit_errors++;
-  if(nd->raw_navdata.bit_errors > 1600) {
+  if(nd->raw_navdata.bit_errors > 1200) {
     nd->raw_navdata.bit_errors = 0;
     return 0;
   }
