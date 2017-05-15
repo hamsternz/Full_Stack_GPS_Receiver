@@ -735,19 +735,6 @@ static void nav_new_bit(struct Nav_data *nd, uint_8 s) {
 }
 
 /*************************************************************************
-* Restart the reception of NAV data. This happens if we have an
-* unexpected BPSK phase flip
-*************************************************************************/
-static void nav_abandon(struct Nav_data *nd) {
-#if 0
-    printf("%2i: Abandon - %5i errors\n", nd->sv_id, nd->raw_navdata.bit_errors);
-#endif
-    nd->raw_navdata.valid_bits = 0;
-    nd->raw_navdata.synced = 0;
-    nd->raw_navdata.bit_errors++;
-}
-
-/*************************************************************************
 *
 *************************************************************************/
 void nav_remove(int sv_id) {
@@ -776,25 +763,37 @@ int nav_clear_bit_errors_count(int sv_id) {
 * We have a new MS of signal. Work towards decoding a bit of BPSH data
 *************************************************************************/
 static int nav_process(struct Nav_data *nd, uint_8 s) {
-    int rtn = 1;
-    if(nd->raw_navdata.part_in_bit == BIT_LENGTH-1) {
-        if(nd->raw_navdata.bit_errors>0)
-            nd->raw_navdata.bit_errors--;
-        nd->raw_navdata.part_in_bit = 0;
-    } else if(s != (nd->raw_navdata.new_word&1)) {
-        nav_abandon(nd);
-        if(nd->raw_navdata.bit_errors > 1600) {
-          nd->raw_navdata.bit_errors = 0;
-          rtn = 0;
-        }
-        nd->raw_navdata.part_in_bit = 0;
-    } else
-        nd->raw_navdata.part_in_bit++;
-    
-    if(nd->raw_navdata.part_in_bit == 0) {
-        nav_new_bit(nd,s);
-    }
-    return rtn;
+  if(nd->raw_navdata.part_in_bit == BIT_LENGTH-1) {
+    /* We are expecting a possible transition on this cycle */
+    if(nd->raw_navdata.bit_errors>0)
+      nd->raw_navdata.bit_errors--;
+    nd->raw_navdata.part_in_bit = 0;
+    nav_new_bit(nd,s);
+    return 1;
+  }
+
+  if(s == (nd->raw_navdata.new_word&1)) {
+    /* This is the expected value, so do nothing */
+    nd->raw_navdata.part_in_bit++;
+    return 1;
+  }
+
+  /* We have seen an unexpected transition, so got a data error */
+#if 0
+  printf("%2i: Abandon - %5i errors\n", nd->sv_id, nd->raw_navdata.bit_errors);
+#endif
+  nd->raw_navdata.part_in_bit = 0;
+  nd->raw_navdata.valid_bits = 0;
+  nd->raw_navdata.synced = 0;
+  nav_new_bit(nd,s);
+
+  /* See if we have to pass the error up to the channel */
+  nd->raw_navdata.bit_errors++;
+  if(nd->raw_navdata.bit_errors > 1600) {
+    nd->raw_navdata.bit_errors = 0;
+    return 0;
+  }
+  return 1;
 }
 
 /*************************************************
