@@ -70,7 +70,7 @@ int main(int argc, char *argv[]) {
      return 0;
    }
    gold_code_startup();
-   nav_startup();
+   nav_startup(argv[1]);
    acquire_startup();
    channel_startup(nav_add_bit);
    schedule_startup();

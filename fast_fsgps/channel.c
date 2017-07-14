@@ -38,7 +38,7 @@ SOFTWARE.
 
 #define SHOW_CHANNEL_POWER 0
 #define CALC_NOT_FILTERED  1
-#define EARLY_LATE_WIDTH   12
+#define EARLY_LATE_WIDTH   14
 struct Channel {
    uint_32 nco_if;
    uint_32 step_if;
@@ -79,8 +79,8 @@ struct Channel {
 #define LOCK_DELTA_IIR_FACTOR       8
 #define LOCK_ANGLE_IIR_FACTOR       8
 
-/* For Debug */
-#define LOCK_SHOW_ANGLES 0
+/* For Debug - put in the ID of the SV signal to save */
+#define LOCK_SAVE_ANGLES -1
 
 #define ATAN2_SIZE 128
 static uint_8 atan2_lookup[ATAN2_SIZE][ATAN2_SIZE];
@@ -378,8 +378,17 @@ static void adjust_prompt(struct Channel *ch) {
     adjust  += (1<<24) / 32 / LOCK_DELTA_IIR_FACTOR / 16368 * ch->delta_filtered;
     ch->step_if  -= adjust;
 
-#if LOCK_SHOW_ANGLES
-    printf("%6i, %6i, %3i,%4i,%6i, %6i, %6i\n",ch->prompt_sine_count, ch->prompt_cosine_count, angle,delta, ch->delta_filtered, adjust, ch->step_if);
+#if LOCK_SAVE_ANGLES >= 0
+    if(ch->sv_id == LOCK_SAVE_ANGLES_ID) {
+       static int first = 1;
+       static FILE *f = NULL;
+       if(first) {
+          first = 0;
+          f = fopen("angles.log","w");
+       }
+       if(f != NULL)
+          fprintf(f,"%6i, %6i, %3i,%4i,%6i, %6i, %6i\n",ch->prompt_sine_count, ch->prompt_cosine_count, angle,delta, ch->delta_filtered, adjust, ch->step_if);
+    }
 #endif
 
     /* Pass the phase info to the external design */

@@ -44,7 +44,7 @@ SOFTWARE.
 #define MAX_POS 10
 static const double PI             = 3.1415926535898;
 
-#define AVERAGE_LEN 21
+#define AVERAGE_LEN 100
 static double average_lat[AVERAGE_LEN];
 static double average_lon[AVERAGE_LEN];
 static double average_alt[AVERAGE_LEN];
@@ -52,6 +52,7 @@ static int average_index = -1;
 
 static int using_ncurses;
 #if USE_NCURSES 
+static int using_color;
 static int row;
 #endif
 
@@ -64,6 +65,12 @@ void status_startup(void) {
   }
 
   using_ncurses = 1;
+  if(has_colors()) {
+    using_color = 1;
+    start_color();
+    init_pair(1, COLOR_GREEN,COLOR_BLACK);
+    init_pair(2, COLOR_WHITE, COLOR_BLACK);
+  }
   /* This sets up the keyboard to send character by
      character, without echoing to the screen */
   cbreak();
@@ -98,7 +105,22 @@ static void show_line(char *h) {
   }  
 #if USE_NCURSES 
   move(row,0);
-  printw("%s",h);
+  if(!using_color) {
+    printw("%s",h);
+  } else {
+    while(*h) {
+      attron(COLOR_PAIR(1));
+      while(*h && (*h < '0' || *h > '9') && *h != '-')  {
+        printw("%c",*h);
+        h++;
+      }
+      attron(COLOR_PAIR(2));
+      while((*h >= '0' && *h <= '9') || *h == '-' || *h == '.' || *h == ' ')  {
+        printw("%c",*h);
+        h++;
+      }
+    }
+  }
   row++;
 #endif
 }
@@ -231,12 +253,12 @@ void status_show(double timestamp) {
     bad_time_detected = 1;
 
     /* Remove the bad time entry */
-    for(c2 = c; c < pos_used-1; c++) {
-      pos_sv[c2] = pos_sv[c2+1];
-      pos_t[c2]  = pos_t[c2+1];
-      pos_x[c2]  = pos_x[c2+1];
-      pos_y[c2]  = pos_y[c2+1];
-      pos_z[c2]  = pos_z[c2+1];
+    for(c2 = c+1; c2 < pos_used && c2 < MAX_POS; c2++) {
+      pos_sv[c2-1] = pos_sv[c2];
+      pos_t[c2-1]  = pos_t[c2];
+      pos_x[c2-1]  = pos_x[c2];
+      pos_y[c2-1]  = pos_y[c2];
+      pos_z[c2-1]  = pos_z[c2];
     }
     pos_used--; 
   }
@@ -245,7 +267,7 @@ void status_show(double timestamp) {
   show_line(line);
   show_line("sv,            x,            y,            z,            t"); 
   for(c = 0; c < pos_used; c++) {
-    sprintf(line, "%2i, %12.2f, %12.2f, %12.2f, %12.8f",pos_sv[c], pos_x[c], pos_y[c], pos_z[c], pos_t[c]);
+    sprintf(line, "%02i, %12.2f, %12.2f, %12.2f, %12.8f",pos_sv[c], pos_x[c], pos_y[c], pos_z[c], pos_t[c]);
     show_line(line);
   }
   while(c < 8) {
@@ -309,6 +331,7 @@ void status_shutdown(void) {
     return;
 #if USE_NCURSES 
   refresh();
+  getch();
   endwin();
 #endif
 }
