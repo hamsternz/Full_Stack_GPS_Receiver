@@ -26,4 +26,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ****************************************************************************/
-void show_status(double timestamp);
+void status_startup(void);
+void status_show(double timestamp);
+int status_printf_ok(void);
+void status_shutdown(void);

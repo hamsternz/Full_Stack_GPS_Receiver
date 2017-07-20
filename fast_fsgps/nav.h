@@ -26,7 +26,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ****************************************************************************/
-int nav_startup(void);
+int nav_startup(char *datafile_name_buf);
 int nav_bit_sync(int sv);
 int nav_week_num(int sv);
 int nav_subframe_of_week(int sv);

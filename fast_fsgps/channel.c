@@ -38,7 +38,13 @@ SOFTWARE.
 
 #define SHOW_CHANNEL_POWER 0
 #define CALC_NOT_FILTERED  1
-#define EARLY_LATE_WIDTH   14
+#define EARLY_LATE_WIDTH   12
+
+/* Filter factors */
+#define LATE_EARLY_IIR_FACTOR       8
+#define LOCK_DELTA_FILTER_FACTOR    8
+#define LOCK_ANGLE_IIR_FACTOR       8
+
 struct Channel {
    uint_32 nco_if;
    uint_32 step_if;
@@ -61,7 +67,7 @@ struct Channel {
    uint_32 prompt_power_filtered_not_reset;
    uint_32 late_power_filtered_not_reset;
 #endif
-
+   int_32 delta_filter_values[LOCK_DELTA_FILTER_FACTOR];
    uint_8 last_angle;
    int_32 delta_filtered;
    int_32 angle_filtered;
@@ -74,13 +80,9 @@ struct Channel {
    uint_8 flipped;
 };
 
-/* Filter factors */
-#define LATE_EARLY_IIR_FACTOR       8
-#define LOCK_DELTA_IIR_FACTOR       8
-#define LOCK_ANGLE_IIR_FACTOR       8
 
-/* For Debug */
-#define LOCK_SHOW_ANGLES 0
+/* For Debug - put in the ID of the SV signal to save */
+#define LOCK_SAVE_ANGLES -1
 
 #define ATAN2_SIZE 128
 static uint_8 atan2_lookup[ATAN2_SIZE][ATAN2_SIZE];
@@ -178,7 +180,7 @@ static void generate_atan2_table(void) {
 }
 
 /************************************************
-* A quick way to calculat the number of set bits
+* A quick way to calculate the number of set bits
 ************************************************/
 static unsigned char ones_lookup[256];
 static void setup_count_ones(void) {
@@ -364,8 +366,21 @@ static void adjust_prompt(struct Channel *ch) {
     delta = angle -ch->last_angle;
     ch->last_angle = angle;
 
-    ch->delta_filtered -= ch->delta_filtered / LOCK_DELTA_IIR_FACTOR;
+#if 1
+    for(i = 0; i < LOCK_DELTA_FILTER_FACTOR-1; i++) {
+      ch->delta_filter_values[i+1] = ch->delta_filter_values[i];
+    }
+    ch->delta_filter_values[0] = delta;
+
+    ch->delta_filtered = 0;
+    for(i = 0; i < LOCK_DELTA_FILTER_FACTOR; i++) {
+      ch->delta_filtered += ch->delta_filter_values[i]*(LOCK_DELTA_FILTER_FACTOR-i);
+    }
+    ch->delta_filtered /= (LOCK_DELTA_FILTER_FACTOR+1) * 2;
+#else
+    ch->delta_filtered -= ch->delta_filtered / LOCK_DELTA_FILTER_FACTOR;
     ch->delta_filtered += delta;
+#endif
 
     adjust = angle;
     ch->angle_filtered -= ch->angle_filtered / LOCK_ANGLE_IIR_FACTOR;
@@ -375,11 +390,20 @@ static void adjust_prompt(struct Channel *ch) {
         ch->angle_filtered -= 256;
 
     adjust  = ch->angle_filtered/8;
-    adjust  += (1<<24) / 32 / LOCK_DELTA_IIR_FACTOR / 16368 * ch->delta_filtered;
+    adjust  += (1<<24) / 32 / LOCK_DELTA_FILTER_FACTOR / 16368 * ch->delta_filtered;
     ch->step_if  -= adjust;
 
-#if LOCK_SHOW_ANGLES
-    printf("%6i, %6i, %3i,%4i,%6i, %6i, %6i\n",ch->prompt_sine_count, ch->prompt_cosine_count, angle,delta, ch->delta_filtered, adjust, ch->step_if);
+#if LOCK_SAVE_ANGLES >= 0
+    if(ch->sv_id == LOCK_SAVE_ANGLES_ID) {
+       static int first = 1;
+       static FILE *f = NULL;
+       if(first) {
+          first = 0;
+          f = fopen("angles.log","w");
+       }
+       if(f != NULL)
+          fprintf(f,"%6i, %6i, %3i,%4i,%6i, %6i, %6i\n",ch->prompt_sine_count, ch->prompt_cosine_count, angle,delta, ch->delta_filtered, adjust, ch->step_if);
+    }
 #endif
 
     /* Pass the phase info to the external design */

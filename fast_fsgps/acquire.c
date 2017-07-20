@@ -31,9 +31,8 @@ SOFTWARE.
 #include "gold_codes.h"
 #include "acquire.h"
 
-#define N_BANDS  21
-#define N_PARALLEL 2
-
+#define N_BANDS  11
+#define N_PARALLEL 4
 uint_32 ncos_phase[N_BANDS];
 uint_32 ncos_step[N_BANDS];
 

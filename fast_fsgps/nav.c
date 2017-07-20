@@ -35,7 +35,9 @@ SOFTWARE.
 #include <time.h>
 #include "types.h"
 #include "nav.h"
+#include "status.h"
 
+#define MAX_DATAFILE_NAME_LEN 256
 #define MAX_SV 33
 
 #define MS_PER_BIT                (20)
@@ -49,6 +51,7 @@ static const double mu             = 3.986005e14;      /* Earth's universal grav
 static const double omegaDot_e     = 7.2921151467e-5;  /* Earth's rotation (radians per second) */
 static const int    TIME_EPOCH     = 315964800;
 
+char datafile_name_buf[MAX_DATAFILE_NAME_LEN];
 
 /*************************************************
 * Raw data recevied from the Space Vehicles
@@ -56,6 +59,7 @@ static const int    TIME_EPOCH     = 315964800;
 struct Raw_navdata {
   uint_32 seq;
   uint_8  synced;
+  uint_8  bit_align_certainty;
   uint_32 subframe_of_week;
 
   /* Last 32 bits of data received*/
@@ -73,6 +77,7 @@ struct Raw_navdata {
   /* Complete NAV data frames (only 1 to 5 is used, zero is empty) */
   uint_8  valid_subframe[6];
   uint_32 subframes[6][10];  
+   
 };
 
 /*************************************************
@@ -235,7 +240,7 @@ int nav_calc_corrected_time(int sv_id, double raw_t, double *t) {
     return 0;
 
   if(!nav_data[sv_id].nav_time.time_good)
-    return -1;
+    return 0;
 
   nd = nav_data+sv_id;
 
@@ -397,6 +402,8 @@ static signed  join_bits_s(int val1, int offset1, int len1, int val2, int offset
 ******************************************************************************
 *****************************************************************************/
 static void debug_print_orbit(struct Nav_data *nd) {
+  if(!status_printf_ok())
+    return;
   printf("\nOrbit parameters for SV %i:\n",   nd->sv_id);
   printf("iode      %02X\n",                  nd->nav_orbit.iode);
   printf("double M0        = %2.30g;\n", nd->nav_orbit.mean_motion_at_ephemeris);
@@ -424,6 +431,8 @@ void debug_print_time(struct Nav_data *nd) {
   struct tm  ts;
   char       buf[80];
   time_t     timestamp;
+  if(!status_printf_ok())
+    return;
 
   printf("\nTime parameters for SV %i:\n",   nd->sv_id);
   printf("Week No    %i\n", nd->nav_time.week_num);
@@ -508,13 +517,16 @@ static void nav_save_frame(struct Nav_data *nd) {
           nd->nav_file = fopen(name,"r+b");
           if(nd->nav_file == NULL) {
              nd->nav_file = fopen(name,"wb");
+             if(nd->nav_file != NULL) {
+               fwrite(datafile_name_buf, sizeof(datafile_name_buf),1, nd->nav_file);
+             }
           } 
           if(nd->nav_file == NULL) {
               printf("Unable to open NAV file '%s'\n",name);
           }
       }
       if(nd->nav_file != NULL) {
-          fseek(nd->nav_file, sizeof(nd->raw_navdata.new_subframe)*(frame_type-1), SEEK_SET);
+          fseek(nd->nav_file,  MAX_DATAFILE_NAME_LEN + sizeof(nd->raw_navdata.new_subframe)*(frame_type-1), SEEK_SET);
           fwrite(nd->raw_navdata.new_subframe,sizeof(nd->raw_navdata.new_subframe),1,nd->nav_file);
           fflush(nd->nav_file);
       }
@@ -609,10 +621,10 @@ static void nav_save_frame(struct Nav_data *nd) {
 * Read in any cached NAV data for one Space Vehicles. This will allow results 
 * quicker as we don't have to wait for all the orbit info to be received
 ******************************************************************************/
-static int nav_read_in_cached_data(struct Nav_data *nd) {
+static int nav_read_in_cached_data(struct Nav_data *nd, char *filename) {
     FILE *f;
     char name[22];
-
+    char datafile_name[MAX_DATAFILE_NAME_LEN];
     sprintf(name, "NAV_%02i.dat",nd->sv_id);
     f = fopen(name,"r+");
     if(f == NULL) {
@@ -620,9 +632,16 @@ static int nav_read_in_cached_data(struct Nav_data *nd) {
         return 0;
     }
 
-    while(fread(nd->raw_navdata.new_subframe,40,1,f) == 1) {
-        printf("Read in subframe\n");
-        nav_save_frame(nd);
+    /* Read in th the file name */
+    if(fread(datafile_name, sizeof(datafile_name), 1, f) == 1) {
+      if(strncmp(filename, datafile_name, sizeof(datafile_name))==0) {
+        while(fread(nd->raw_navdata.new_subframe,40,1,f) == 1) {
+          printf("Read in subframe\n");
+          nav_save_frame(nd);
+        }
+      } else {
+        printf("File %s is not for this datafile - ignoring the contents\n", name);
+      }
     }
     fclose(f);
     /* Reset the time_good flag, as the frame_of_week will be wrong */
@@ -634,10 +653,10 @@ static int nav_read_in_cached_data(struct Nav_data *nd) {
 * Read in any cached NAV data for all Space Vehicles. This will allow results
 * quicker as we don't have to wait for all the orbit info to be received
 ******************************************************************************/
-static void nav_read_in_all_cached_data(void) {
+static void nav_read_in_all_cached_data(char *filename) {
     int i;
     for(i = 0; i < MAX_SV+1; i++) {
-        nav_read_in_cached_data(nav_data+i);
+        nav_read_in_cached_data(nav_data+i, filename);
     }
 }
 
@@ -767,6 +786,13 @@ static int nav_process(struct Nav_data *nd, uint_8 s) {
     /* We are expecting a possible transition on this cycle */
     if(nd->raw_navdata.bit_errors>0)
       nd->raw_navdata.bit_errors--;
+ 
+    /* Are we more certain of this alignment? (does the bit change?)  */
+    if(s != (nd->raw_navdata.new_word&1)) {
+       if(nd->raw_navdata.bit_align_certainty < 10) {
+         nd->raw_navdata.bit_align_certainty++;
+       }
+    }
     nd->raw_navdata.part_in_bit = 0;
     nav_new_bit(nd,s);
     return 1;
@@ -782,14 +808,18 @@ static int nav_process(struct Nav_data *nd, uint_8 s) {
 #if 0
   printf("%2i: Abandon - %5i errors\n", nd->sv_id, nd->raw_navdata.bit_errors);
 #endif
-  nd->raw_navdata.part_in_bit = 0;
   nd->raw_navdata.valid_bits = 0;
-  nd->raw_navdata.synced = 0;
-  nav_new_bit(nd,s);
+  if(nd->raw_navdata.bit_align_certainty == 0) {
+    nd->raw_navdata.part_in_bit = 0;
+    nd->raw_navdata.synced = 0;
+    nav_new_bit(nd,s);
+  } else {
+    nd->raw_navdata.bit_align_certainty--;
+  }
 
   /* See if we have to pass the error up to the channel */
   nd->raw_navdata.bit_errors++;
-  if(nd->raw_navdata.bit_errors > 1600) {
+  if(nd->raw_navdata.bit_errors > 1200) {
     nd->raw_navdata.bit_errors = 0;
     return 0;
   }
@@ -821,14 +851,18 @@ int nav_add_bit(int sv, int power) {
 /*************************************************
 *                                             
 *************************************************/
-int nav_startup(void) {
+int nav_startup(char *datafile_name) {
   int i;
+
+  memset(datafile_name_buf, 0, sizeof(datafile_name_buf));
+  strcpy(datafile_name_buf, datafile_name);
+
   for(i = 0; i <= MAX_SV; i++) {
     nav_data[i].sv_id             =  i;
     nav_data[i].nav_time.week_num = -1;
     nav_data[i].subframe_of_week  = -1;
     nav_data[i].ms_of_frame       = -1;
   } 
-  nav_read_in_all_cached_data();
+  nav_read_in_all_cached_data(datafile_name);
   return 1;
 }
