@@ -276,6 +276,7 @@ void status_show(double timestamp) {
   }
 
   if(pos_used > 3) { 
+    int i;
     show_line("");
     solve_location(pos_used, pos_x, pos_y, pos_z, pos_t, &sol_x,&sol_y,&sol_z,&sol_t);
     solve_LatLonAlt(sol_x, sol_y, sol_z, &lat, &lon, &alt);
@@ -286,7 +287,6 @@ void status_show(double timestamp) {
     show_line(line);
     /* Is this the first fix? */
     if(average_index == -1) {    
-      int i;
       /* Set the initial values to the first fix */
       for(i = 0; i < AVERAGE_LEN; i++) {
          average_lat[i] = lat;
@@ -295,7 +295,6 @@ void status_show(double timestamp) {
       }
       average_index = 0;
     }
-    int i;
     average_lat[average_index] = lat;
     average_lon[average_index] = lon;
     average_alt[average_index] = alt;
