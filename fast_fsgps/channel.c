@@ -38,7 +38,13 @@ SOFTWARE.
 
 #define SHOW_CHANNEL_POWER 0
 #define CALC_NOT_FILTERED  1
-#define EARLY_LATE_WIDTH   14
+#define EARLY_LATE_WIDTH  12
+
+/* Filter factors */
+#define LATE_EARLY_IIR_FACTOR       8 
+#define LOCK_DELTA_FILTER_FACTOR    8
+#define LOCK_ANGLE_IIR_FACTOR       4
+
 struct Channel {
    uint_32 nco_if;
    uint_32 step_if;
@@ -46,7 +52,7 @@ struct Channel {
 
    uint_32 nco_code;
    uint_32 step_code;
-   uint_32 code_tune;
+   int_32 code_tune;
 
    int_32 early_sine_count,  early_cosine_count,  early_sample_count;
    int_32 prompt_sine_count, prompt_cosine_count, prompt_sample_count;
@@ -61,7 +67,7 @@ struct Channel {
    uint_32 prompt_power_filtered_not_reset;
    uint_32 late_power_filtered_not_reset;
 #endif
-
+   int_32 delta_filter_values[LOCK_DELTA_FILTER_FACTOR];
    uint_8 last_angle;
    int_32 delta_filtered;
    int_32 angle_filtered;
@@ -71,13 +77,10 @@ struct Channel {
    uint_8 channel_allocated;
    uint_8 sv_id;
    uint_8 disable_track;
+   uint_32 time_to_fine_lock;
    uint_8 flipped;
 };
 
-/* Filter factors */
-#define LATE_EARLY_IIR_FACTOR       8
-#define LOCK_DELTA_IIR_FACTOR       8
-#define LOCK_ANGLE_IIR_FACTOR       8
 
 /* For Debug - put in the ID of the SV signal to save */
 #define LOCK_SAVE_ANGLES -1
@@ -90,38 +93,14 @@ static struct Channel channels[MAX_CHANNELS];
 static int channels_used = 0;
 
 static uint_32 masks[32] = {
-   0x00000000,
-   0x00000001,
-   0x00000003,
-   0x00000007,
-   0x0000000F,
-   0x0000001F,
-   0x0000003F,
-   0x0000007F,
-   0x000000FF,
-   0x000001FF,
-   0x000003FF,
-   0x000007FF,
-   0x00000FFF,
-   0x00001FFF,
-   0x00003FFF,
-   0x00007FFF,
-   0x0000FFFF,
-   0x0001FFFF,
-   0x0003FFFF,
-   0x0007FFFF,
-   0x000FFFFF,
-   0x001FFFFF,
-   0x003FFFFF,
-   0x007FFFFF,
-   0x00FFFFFF,
-   0x01FFFFFF,
-   0x03FFFFFF,
-   0x07FFFFFF,
-   0x0FFFFFFF,
-   0x1FFFFFFF,
-   0x3FFFFFFF,
-   0x7FFFFFFF
+   0x00000000, 0x00000001, 0x00000003, 0x00000007,
+   0x0000000F, 0x0000001F, 0x0000003F, 0x0000007F, 
+   0x000000FF, 0x000001FF, 0x000003FF, 0x000007FF,
+   0x00000FFF, 0x00001FFF, 0x00003FFF, 0x00007FFF, 
+   0x0000FFFF, 0x0001FFFF, 0x0003FFFF, 0x0007FFFF,
+   0x000FFFFF, 0x001FFFFF, 0x003FFFFF, 0x007FFFFF,
+   0x00FFFFFF, 0x01FFFFFF, 0x03FFFFFF, 0x07FFFFFF,
+   0x0FFFFFFF, 0x1FFFFFFF, 0x3FFFFFFF, 0x7FFFFFFF
 };
 
 int (*phase_callback)(int sv_id, int phase);
@@ -178,7 +157,7 @@ static void generate_atan2_table(void) {
 }
 
 /************************************************
-* A quick way to calculat the number of set bits
+* A quick way to calculate the number of set bits
 ************************************************/
 static unsigned char ones_lookup[256];
 static void setup_count_ones(void) {
@@ -364,8 +343,21 @@ static void adjust_prompt(struct Channel *ch) {
     delta = angle -ch->last_angle;
     ch->last_angle = angle;
 
-    ch->delta_filtered -= ch->delta_filtered / LOCK_DELTA_IIR_FACTOR;
+#if 1
+    for(i = 0; i < LOCK_DELTA_FILTER_FACTOR-1; i++) {
+      ch->delta_filter_values[i+1] = ch->delta_filter_values[i];
+    }
+    ch->delta_filter_values[0] = delta;
+
+    ch->delta_filtered = 0;
+    for(i = 0; i < LOCK_DELTA_FILTER_FACTOR; i++) {
+      ch->delta_filtered += ch->delta_filter_values[i]*(LOCK_DELTA_FILTER_FACTOR-i);
+    }
+    ch->delta_filtered /= (LOCK_DELTA_FILTER_FACTOR+1) * 2;
+#else
+    ch->delta_filtered -= ch->delta_filtered / LOCK_DELTA_FILTER_FACTOR;
     ch->delta_filtered += delta;
+#endif
 
     adjust = angle;
     ch->angle_filtered -= ch->angle_filtered / LOCK_ANGLE_IIR_FACTOR;
@@ -375,11 +367,11 @@ static void adjust_prompt(struct Channel *ch) {
         ch->angle_filtered -= 256;
 
     adjust  = ch->angle_filtered/8;
-    adjust  += (1<<24) / 32 / LOCK_DELTA_IIR_FACTOR / 16368 * ch->delta_filtered;
+    adjust  += (1<<24) / 32 / LOCK_DELTA_FILTER_FACTOR / 16368 * ch->delta_filtered;
     ch->step_if  -= adjust;
 
 #if LOCK_SAVE_ANGLES >= 0
-    if(ch->sv_id == LOCK_SAVE_ANGLES_ID) {
+    if(ch->sv_id == LOCK_SAVE_ANGLES) {
        static int first = 1;
        static FILE *f = NULL;
        if(first) {
@@ -421,20 +413,22 @@ static void adjust_prompt(struct Channel *ch) {
 /************************************************
 *
 ************************************************/
-int  channel_add(int_8 sv_id, uint_32 step_if, uint_32 nco_code, int_32 code_tune) {
+int  channel_add(int_8 sv_id, uint_32 step_if, uint_32 nco_code) {
   int i;
+  int_32 code_tune = (int)(step_if - 0x40000000)/90;
+
   if(sv_id > MAX_SV_ID || sv_id < MIN_SV_ID)
      return -1;
-
+    
   for(i = 0; i < channels_used; i++ ) {
     if(channels[i].sv_id == sv_id) {
-      printf("=========== UPDATE %2i =================\n",sv_id);
       channels[i].step_if          = step_if;
       channels[i].step_if_starting = step_if;
       channels[i].nco_code         = nco_code;
       channels[i].code_tune        = code_tune;
       channels[i].step_code        = 0x00040000;
       channels[i].flipped          = 0;
+      channels[i].time_to_fine_lock = 1000;
       return i;
     }
   } 
@@ -448,6 +442,7 @@ int  channel_add(int_8 sv_id, uint_32 step_if, uint_32 nco_code, int_32 code_tun
       channels[i].code_tune        = code_tune;
       channels[i].step_code        = 0x00040000;
       channels[i].flipped          = 0;
+      channels[i].time_to_fine_lock = 1000;
       return i;
     }
   }
@@ -458,9 +453,10 @@ int  channel_add(int_8 sv_id, uint_32 step_if, uint_32 nco_code, int_32 code_tun
   channels[channels_used].step_if   = step_if;
   channels[channels_used].step_if_starting = step_if;
   channels[channels_used].nco_code  = nco_code;
-  channels[channels_used].code_tune = code_tune;
+  channels[i].code_tune             = code_tune;
   channels[channels_used].step_code = 0x00040000;
   channels[channels_used].flipped   = 0;
+  channels[i].time_to_fine_lock = 1000;
   channels_used++;
   return channels_used-1;
 }
@@ -495,6 +491,14 @@ uint_32 channel_get_sv_id(int handle) {
   if(handle < 0 || handle >= channels_used)
     return -1;
   return channels[handle].sv_id;
+}
+/************************************************
+*
+************************************************/
+uint_32 channel_get_code_tune(int handle) {
+  if(handle < 0 || handle >= channels_used)
+    return 0;
+  return channels[handle].code_tune;
 }
 /************************************************
 *
@@ -701,16 +705,30 @@ void channel_update(uint_32 data) {
          /* Trim the NCO for the Gold Code */
          /* Use the relative power levels of the late and early codes
          * to adjust the code NCO phasing */
+         if(c->time_to_fine_lock > 0)
+            c->time_to_fine_lock--;
+#define DIV_A 6
+#define DIV_B 12
          if(!c->disable_track) {
            adjust =  c->code_tune;
-           if(c->early_power_filtered/5 > c->late_power_filtered/4) {
+           if(c->early_power_filtered/DIV_B > c->late_power_filtered/DIV_A) {
              c->early_power_filtered = (c->early_power_filtered*7+c->late_power_filtered)/8;
-             adjust += 16368*1;
-             c->code_tune+=2;
-           } else if(c->late_power_filtered/5 > c->early_power_filtered/4) {
+             if(c->time_to_fine_lock > 0) {
+                adjust += 16368*2;
+                c->code_tune +=16; 
+             } else {
+                adjust += 16368/8;
+                c->code_tune +=1; 
+             }
+           } else if(c->late_power_filtered/DIV_B > c->early_power_filtered/DIV_A) {
              c->late_power_filtered = (c->late_power_filtered*7+c->early_power_filtered)/8;
-             adjust  -= 16368*1;
-             c->code_tune-=2;
+             if(c->time_to_fine_lock > 0) {
+               adjust  -= 16368*2;
+               c->code_tune -=16;
+             } else {
+                adjust -= 16368/8;
+                c->code_tune -=1; 
+             }
            }
            c->nco_code += adjust;
   

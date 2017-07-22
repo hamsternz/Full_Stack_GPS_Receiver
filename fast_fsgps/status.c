@@ -45,9 +45,9 @@ SOFTWARE.
 static const double PI             = 3.1415926535898;
 
 #define AVERAGE_LEN 100
-static double average_lat[AVERAGE_LEN];
-static double average_lon[AVERAGE_LEN];
-static double average_alt[AVERAGE_LEN];
+static double average_x[AVERAGE_LEN];
+static double average_y[AVERAGE_LEN];
+static double average_z[AVERAGE_LEN];
 static int average_index = -1;
 
 static int using_ncurses;
@@ -135,6 +135,7 @@ void status_show(double timestamp) {
   char line[256];
   int c, pos_sv[MAX_POS], lines;
   int bad_time_detected = 0,i;
+  double x, y, z, error;
   double lat,lon,alt;
   double pos_x[MAX_POS], pos_y[MAX_POS], pos_z[MAX_POS], pos_t[MAX_POS];
   double agreed_time;
@@ -156,7 +157,7 @@ void status_show(double timestamp) {
   show_line(line);
 
   show_line("Channel status:");
-  show_line("SV, WeekNum, FrameOfWeek,  msOfFrame, early,prompt,  late, frame, bitErrs");
+  show_line("SV, WeekNum, FrameOfWeek,  msOfFrame, early,prompt,  late, frame, bitErrs, codeTune");
   lines = 0;
   for(c = 0; c < channel_get_count(); c++) {
     int sv,frames;
@@ -166,7 +167,7 @@ void status_show(double timestamp) {
       continue;
     channel_get_power(c, &early_power, &prompt_power, &late_power);
     frames = nav_known_frames(sv); 
-    sprintf(line,"%02i, %7i,  %10i,  %9.4f, %5u, %5u, %5u,  %c%c%c%c%c  %6i", 
+    sprintf(line,"%02i, %7i,  %10i,  %9.4f, %5u, %5u, %5u,  %c%c%c%c%c  %6i %6i", 
         channel_get_sv_id(c),
         nav_week_num(sv),
         nav_subframe_of_week(sv),
@@ -177,7 +178,8 @@ void status_show(double timestamp) {
         frames & 0x04 ? '3' : '-',
         frames & 0x08 ? '4' : '-',
         frames & 0x10 ? '5' : '-',
-        nav_get_bit_errors_count(sv)
+        nav_get_bit_errors_count(sv),
+        channel_get_code_tune(c)
     ); 
     show_line(line);
     lines++;
@@ -276,6 +278,7 @@ void status_show(double timestamp) {
   }
 
   if(pos_used > 3) { 
+    int i;
     show_line("");
     solve_location(pos_used, pos_x, pos_y, pos_z, pos_t, &sol_x,&sol_y,&sol_z,&sol_t);
     solve_LatLonAlt(sol_x, sol_y, sol_z, &lat, &lon, &alt);
@@ -289,32 +292,42 @@ void status_show(double timestamp) {
       int i;
       /* Set the initial values to the first fix */
       for(i = 0; i < AVERAGE_LEN; i++) {
-         average_lat[i] = lat;
-         average_lon[i] = lon;
-         average_alt[i] = alt;
+         average_x[i] = sol_x;
+         average_y[i] = sol_y;
+         average_z[i] = sol_z;
       }
       average_index = 0;
     }
-    int i;
-    average_lat[average_index] = lat;
-    average_lon[average_index] = lon;
-    average_alt[average_index] = alt;
+    average_x[average_index] = sol_x;
+    average_y[average_index] = sol_y;
+    average_z[average_index] = sol_z;
 
       /* Update and wrap the counter */
     average_index++;
     if(average_index == AVERAGE_LEN) average_index = 0;
 
-    lat = lon = alt = 0.0;
+    x = y = z = 0.0;
     for(i = 0; i < AVERAGE_LEN; i++) {
-       lat += average_lat[i];
-       lon += average_lon[i];
-       alt += average_alt[i];
+       x += average_x[i];
+       y += average_y[i];
+       z += average_z[i];
     }
-    lat /= AVERAGE_LEN;
-    lon /= AVERAGE_LEN;
-    alt /= AVERAGE_LEN;
+    x /= AVERAGE_LEN;
+    y /= AVERAGE_LEN;
+    z /= AVERAGE_LEN;
+    error = 0;
+    for(i = 0; i < AVERAGE_LEN; i++) {
+       double d;
+       d  = (average_x[i]-x)*(average_x[i]-x);
+       d += (average_y[i]-y)*(average_y[i]-y);
+       d += (average_z[i]-z)*(average_z[i]-z);
+       error += d;
+    }
+    error /= AVERAGE_LEN;
 
-    sprintf(line,"Average LLA:   %12.7f, %12.7f, %12.2f", lat*180/PI, lon*180/PI, alt);
+    solve_LatLonAlt(x, y, z, &lat, &lon, &alt);
+
+    sprintf(line,"Average LLA:   %12.7f, %12.7f, %12.2f  (noise %6.2f)", lat*180/PI, lon*180/PI, alt, sqrt(error));
     show_line(line);
   } else {
     show_line("");

@@ -50,11 +50,11 @@ static void power_callback(int sv_id, uint_32 step_if, uint_32 offset, uint_32 p
      uint_32 p;
      if(channel_get_power_by_sv_id(sv_id, &p)) {
        if(power > p*2) {
-          channel_add(sv_id, step_if, offset, 0);
+          channel_add(sv_id, step_if, offset);
           nav_clear_bit_errors_count(sv_id);
        }
      } else {
-       channel_add(sv_id, step_if, offset, 0);
+       channel_add(sv_id, step_if, offset);
      }
    }
 }
