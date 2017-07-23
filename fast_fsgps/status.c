@@ -41,7 +41,7 @@ SOFTWARE.
 #include "status.h"
 #include "acquire.h"
 
-#define MAX_POS 10
+#define MAX_POS 12
 static const double PI             = 3.1415926535898;
 
 #define AVERAGE_LEN 100
@@ -131,10 +131,78 @@ static void update_screen(void) {
 #endif
 }
 
+int vote_week_num(void) {
+  int *week_nums;
+  int *votes;
+  int count = channel_get_count();
+  int i, c;
+  int max_week, max_votes;
+  int added = 0;
+  char line[20];
+
+  if(count == 0)
+    return -1;
+
+  week_nums = malloc(sizeof(int) * count); 
+  if(week_nums == NULL)
+    return -1;
+
+  votes     = malloc(sizeof(int) * count); 
+  if(votes == NULL) {
+    free(week_nums);
+    return -1;
+  }
+
+  for(i = 0; i < count; i++) {
+    week_nums[i] = -1;
+    votes[i]     = 0;
+  }
+
+  for(c = 0; c < count; c++) {
+    int sv, week;
+
+    sv = channel_get_sv_id(c);
+    if(sv == 0)
+      continue;
+
+    /* Valid week? */
+    week = nav_week_num(sv);
+    if(week == -1)
+       continue;
+
+    /* Add a vote */
+    for(i = 0; i < count; i++) {
+      if(week_nums[i] == -1) {
+        week_nums[i] = week;
+        votes[i] = votes[i] + 1;
+        added++;
+        break;
+      } else if(week_nums[i] == week) {
+        votes[i] = votes[i] + 1;
+        added++;
+        break;
+      }
+    }
+  }  
+
+  max_votes = votes[0];
+  max_week  = week_nums[0];
+  for(i = 1; i < count; i++) {
+    if(votes[i] > max_votes) {
+      max_votes = votes[i];
+      max_week  = week_nums[i];
+    }
+  }
+  free(week_nums);
+  free(votes);
+  return max_week;
+}
+
 void status_show(double timestamp) {       
   char line[256];
   int c, pos_sv[MAX_POS], lines;
   int bad_time_detected = 0,i;
+  int week_num;
   double x, y, z, error;
   double lat,lon,alt;
   double pos_x[MAX_POS], pos_y[MAX_POS], pos_z[MAX_POS], pos_t[MAX_POS];
@@ -160,11 +228,13 @@ void status_show(double timestamp) {
   show_line("SV, WeekNum, FrameOfWeek,  msOfFrame, early,prompt,  late, frame, bitErrs, codeTune");
   lines = 0;
   for(c = 0; c < channel_get_count(); c++) {
-    int sv,frames;
+    int sv, frames;
     uint_32 early_power, prompt_power, late_power;
+
     sv = channel_get_sv_id(c);
     if(sv == 0)
       continue;
+
     channel_get_power(c, &early_power, &prompt_power, &late_power);
     frames = nav_known_frames(sv); 
     sprintf(line,"%02i, %7i,  %10i,  %9.4f, %5u, %5u, %5u,  %c%c%c%c%c  %6i %6i", 
@@ -188,6 +258,7 @@ void status_show(double timestamp) {
     show_line("");
     lines++;
   }
+  week_num = vote_week_num();
   show_line("");
 
   for(c = 0; c < channel_get_count() && pos_used < MAX_POS; c++) {
@@ -205,6 +276,10 @@ void status_show(double timestamp) {
 
     if(nav_week_num(sv) < 0 )
       continue;
+
+    if(nav_week_num(sv) != week_num )
+      continue;
+
     if(nav_ms_of_frame(sv) <0 )
       continue;
  
@@ -272,7 +347,7 @@ void status_show(double timestamp) {
     sprintf(line, "%02i, %12.2f, %12.2f, %12.2f, %12.8f",pos_sv[c], pos_x[c], pos_y[c], pos_z[c], pos_t[c]);
     show_line(line);
   }
-  while(c < 8) {
+  while(c < 12) {
     show_line("");
     c++;
   }
@@ -283,10 +358,19 @@ void status_show(double timestamp) {
     solve_location(pos_used, pos_x, pos_y, pos_z, pos_t, &sol_x,&sol_y,&sol_z,&sol_t);
     solve_LatLonAlt(sol_x, sol_y, sol_z, &lat, &lon, &alt);
 
-    sprintf(line,"Solution ECEF: %12.2f, %12.2f, %12.2f, %11.5f", sol_x, sol_y, sol_z, sol_t);
+    sprintf(line,"Solution ECEF:   %12.2f, %12.2f, %12.2f, %11.5f", sol_x, sol_y, sol_z, sol_t);
     show_line(line);
-    sprintf(line,"Solution LLA:  %12.7f, %12.7f, %12.2f", lat*180/PI, lon*180/PI, alt);
+    sprintf(line,"Solution LLA:    %12.7f, %12.7f, %12.2f", lat*180/PI, lon*180/PI, alt);
     show_line(line);
+    {
+      static FILE *solution_file = NULL;
+      if(solution_file == NULL) {
+         solution_file = fopen("solutions.txt","w");
+      }
+      if(solution_file != NULL) {
+         fprintf(solution_file,"%12.7f, %12.7f, %12.2f\n",lat*180/PI, lon*180/PI, alt);
+      }
+    }
     /* Is this the first fix? */
     if(average_index == -1) {    
       int i;
@@ -327,7 +411,7 @@ void status_show(double timestamp) {
 
     solve_LatLonAlt(x, y, z, &lat, &lon, &alt);
 
-    sprintf(line,"Average LLA:   %12.7f, %12.7f, %12.2f  (noise %6.2f)", lat*180/PI, lon*180/PI, alt, sqrt(error));
+    sprintf(line,"Average %3i LLA: %12.7f, %12.7f, %12.2f  (noise %6.2f)", AVERAGE_LEN, lat*180/PI, lon*180/PI, alt, sqrt(error));
     show_line(line);
   } else {
     show_line("");

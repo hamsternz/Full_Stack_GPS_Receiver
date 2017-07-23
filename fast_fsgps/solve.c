@@ -38,7 +38,7 @@ static const double SPEED_OF_LIGHT = 299792458.0;
 
 ///////////////////////////////////////////////////////////////////////////////////////////////
 
-#define NUM_CHANS 12
+#define NUM_CHANS 15
 
 int solve_location(int chans, 
             double *x,     double *y,     double *z,     double *t,
