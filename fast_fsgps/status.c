@@ -56,6 +56,9 @@ static int using_color;
 static int row;
 #endif
 
+double tot_error = 0.0;
+int tot_count = 0;
+
 void status_startup(void) {
 #if USE_NCURSES 
   /* This sets up the screen */
@@ -137,8 +140,6 @@ int vote_week_num(void) {
   int count = channel_get_count();
   int i, c;
   int max_week, max_votes;
-  int added = 0;
-  char line[20];
 
   if(count == 0)
     return -1;
@@ -175,11 +176,9 @@ int vote_week_num(void) {
       if(week_nums[i] == -1) {
         week_nums[i] = week;
         votes[i] = votes[i] + 1;
-        added++;
         break;
       } else if(week_nums[i] == week) {
         votes[i] = votes[i] + 1;
-        added++;
         break;
       }
     }
@@ -412,6 +411,10 @@ void status_show(double timestamp) {
     solve_LatLonAlt(x, y, z, &lat, &lon, &alt);
 
     sprintf(line,"Average %3i LLA: %12.7f, %12.7f, %12.2f  (noise %6.2f)", AVERAGE_LEN, lat*180/PI, lon*180/PI, alt, sqrt(error));
+
+    tot_error += error;
+    tot_count++;
+
     show_line(line);
   } else {
     show_line("");
@@ -430,6 +433,7 @@ void status_shutdown(void) {
   refresh();
   getch();
   endwin();
+  printf("RMS Error %6.2f\n",sqrt(tot_error/tot_count));
 #endif
 }
 

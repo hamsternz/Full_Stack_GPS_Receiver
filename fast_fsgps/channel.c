@@ -38,7 +38,7 @@ SOFTWARE.
 
 #define SHOW_CHANNEL_POWER 0
 #define CALC_NOT_FILTERED  1
-#define EARLY_LATE_WIDTH  12
+#define EARLY_LATE_WIDTH   10
 
 /* Filter factors */
 #define LATE_EARLY_IIR_FACTOR       8 
