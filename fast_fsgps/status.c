@@ -200,8 +200,7 @@ int vote_week_num(void) {
 void status_show(double timestamp) {       
   char line[256];
   int c, pos_sv[MAX_POS], lines;
-  int bad_time_detected = 0,i;
-  int week_num;
+  int bad_time_detected = 0,i, week_num;
   double x, y, z, error;
   double lat,lon,alt;
   double pos_x[MAX_POS], pos_y[MAX_POS], pos_z[MAX_POS], pos_t[MAX_POS];
@@ -372,7 +371,6 @@ void status_show(double timestamp) {
     }
     /* Is this the first fix? */
     if(average_index == -1) {    
-      int i;
       /* Set the initial values to the first fix */
       for(i = 0; i < AVERAGE_LEN; i++) {
          average_x[i] = sol_x;
