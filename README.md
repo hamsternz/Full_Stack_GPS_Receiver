@@ -21,6 +21,7 @@ If you want to test it out:
 After a while you should start seeing location fixes
 
 This is the last fix printed for that datafile:
+
     SV, STATE,Orbit,Time,  Week,       Frame,  millisec,       chip,   subchip, NAV status info
     -------------------------------------------------------------------------------------------
     01, LOCKED, YES,YES,   1609,       77797,      4688,        269,         50 7  24  8 12345
